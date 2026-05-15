@@ -128,14 +128,15 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
   // Form States
   const [newProg, setNewProg] = useState({ kode: '', nama: '' });
   const [newKeg, setNewKeg] = useState({ kode: '', nama: '', assignedTo: '' });
-  const [newSub, setNewSub] = useState({ kode: '', nama: '', pagu: 0, assignedTo: '' });
+  const [newSub, setNewSub] = useState({ kode: '', nama: '', pagu: 0, realisasi: 0, assignedTo: '' });
   const [newBelanja, setNewBelanja] = useState({ 
     kode: '', 
     uraian: '', 
     volume: 1, 
     satuan: '', 
     hargaSatuan: 0,
-    pagu: 0 
+    pagu: 0,
+    realisasi: 0
   });
 
   const [editMode, setEditMode] = useState<any>(null);
@@ -150,6 +151,10 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
   };
 
   const handleDeleteProg = async (id: string) => {
+    const hasLinkedPackets = packets.some(p => p.progId === id);
+    if (hasLinkedPackets) {
+      return alert('Tidak dapat menghapus program ini karena masih terdapat data SPJ (Packet) yang terhubung. Hapus data SPJ terkait terlebih dahulu.');
+    }
     if (confirm('Apakah Anda yakin ingin menghapus program ini beserta seluruh datanya?')) {
       try {
         await deleteDoc(doc(db, 'programs', id));
@@ -160,6 +165,10 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
   };
 
   const handleDeleteKeg = async (progId: string, kegId: string) => {
+    const hasLinkedPackets = packets.some(p => p.kegId === kegId);
+    if (hasLinkedPackets) {
+      return alert('Tidak dapat menghapus kegiatan ini karena masih terdapat data SPJ (Packet) yang terhubung.');
+    }
     if (confirm('Hapus kegiatan ini?')) {
       const updated = programs.map(p => {
         if (p.id === progId) {
@@ -172,6 +181,10 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
   };
 
   const handleDeleteSub = async (progId: string, kegId: string, subId: string) => {
+    const hasLinkedPackets = packets.some(p => p.subId === subId);
+    if (hasLinkedPackets) {
+      return alert('Tidak dapat menghapus sub kegiatan ini karena masih terdapat data SPJ (Packet) yang terhubung.');
+    }
     if (confirm('Hapus sub kegiatan ini?')) {
       const updated = programs.map(p => {
         if (p.id === progId) {
@@ -192,6 +205,10 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
   };
 
   const handleDeleteBelanja = async (progId: string, kegId: string, subId: string, belId: string) => {
+    const hasLinkedPackets = packets.some(p => p.belanjaId === belId);
+    if (hasLinkedPackets) {
+      return alert('Tidak dapat menghapus rincian belanja ini karena masih terdapat data SPJ (Packet) yang terhubung.');
+    }
     if (confirm('Hapus rincian belanja ini?')) {
       const updated = programs.map(p => {
         if (p.id === progId) {
@@ -232,7 +249,7 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
   };
 
   const handleEditSub = (progId: string, kegId: string, sub: SubKegiatan) => {
-    setNewSub({ kode: sub.kode, nama: sub.nama, pagu: sub.pagu, assignedTo: sub.assignedTo || '' });
+    setNewSub({ kode: sub.kode, nama: sub.nama, pagu: sub.pagu, realisasi: sub.realisasi || 0, assignedTo: sub.assignedTo || '' });
     setEditMode({ type: 'sub', progId, kegId, id: sub.id });
     setShowAddSub({ kegId, progId });
   };
@@ -244,7 +261,8 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
       volume: bel.volume || 1, 
       satuan: bel.satuan || '', 
       hargaSatuan: bel.hargaSatuan || 0,
-      pagu: bel.pagu 
+      pagu: bel.pagu,
+      realisasi: bel.realisasi || 0
     });
     setEditMode({ type: 'belanja', progId, kegId, subId, id: bel.id });
     setShowAddBelanja({ subId, kegId, progId });
@@ -333,10 +351,11 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
       const subNama = row['Nama Sub Kegiatan'];
       const akunKode = row['Kode Akun'];
       const uraian = row['Uraian Belanja'];
-      const volume = Number(row['Volume'] || 1);
+      const volume = Math.max(0, Number(row['Volume'] || 1));
       const satuan = row['Satuan'];
-      const hargaSatuan = Number(row['Harga Satuan'] || 0);
-      const pagu = row['Pagu'] ? Number(row['Pagu']) : (volume * hargaSatuan);
+      const hargaSatuan = Math.max(0, Number(row['Harga Satuan'] || 0));
+      const pagu = Math.max(0, row['Pagu'] ? Number(row['Pagu']) : (volume * hargaSatuan));
+      const realisasi = Math.max(0, Number(row['Realisasi'] || 0));
 
       if (!progKode || progKode === '-') return;
 
@@ -385,7 +404,7 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
               satuan: satuan,
               hargaSatuan: hargaSatuan,
               pagu: pagu,
-              realisasi: 0
+              realisasi: realisasi
             });
           }
         }
@@ -514,7 +533,7 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
     }
     await saveProgramsToFirestore(recalculateTotals(updated));
     setShowAddSub(null);
-    setNewSub({ kode: '', nama: '', pagu: 0, assignedTo: '' });
+    setNewSub({ kode: '', nama: '', pagu: 0, realisasi: 0, assignedTo: '' });
     setEditMode(null);
   };
 
@@ -567,8 +586,7 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
                           { 
                             id: Math.random().toString(36).substr(2, 9), 
                             ...newBelanja, 
-                            pagu: finalPagu,
-                            realisasi: 0 
+                            pagu: finalPagu
                           }
                         ]
                       };
@@ -586,7 +604,7 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
     }
     await saveProgramsToFirestore(recalculateTotals(updated));
     setShowAddBelanja(null);
-    setNewBelanja({ kode: '', uraian: '', volume: 1, satuan: '', hargaSatuan: 0, pagu: 0 });
+    setNewBelanja({ kode: '', uraian: '', volume: 1, satuan: '', hargaSatuan: 0, pagu: 0, realisasi: 0 });
     setEditMode(null);
   };
 
@@ -682,8 +700,9 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Volume</label>
                         <input 
                           type="number" 
+                          min="0"
                           value={newBelanja.volume || ''}
-                          onChange={(e) => setNewBelanja({...newBelanja, volume: Number(e.target.value)})}
+                          onChange={(e) => setNewBelanja({...newBelanja, volume: Math.max(0, Number(e.target.value))})}
                           placeholder="0"
                           className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-primary/20 text-sm font-bold"
                         />
@@ -703,10 +722,22 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Harga Satuan (IDR)</label>
                       <input 
                         type="number" 
+                        min="0"
                         value={newBelanja.hargaSatuan || ''}
-                        onChange={(e) => setNewBelanja({...newBelanja, hargaSatuan: Number(e.target.value)})}
+                        onChange={(e) => setNewBelanja({...newBelanja, hargaSatuan: Math.max(0, Number(e.target.value))})}
                         placeholder="0"
                         className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-primary/20 text-sm font-bold text-indigo-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Realisasi (IDR)</label>
+                      <input 
+                        type="number" 
+                        min="0"
+                        value={newBelanja.realisasi || ''}
+                        onChange={(e) => setNewBelanja({...newBelanja, realisasi: Math.max(0, Number(e.target.value))})}
+                        placeholder="0"
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-primary/20 text-sm font-bold text-emerald-600"
                       />
                     </div>
                     <div className="p-4 bg-primary/5 rounded-2xl flex justify-between items-center border border-primary/10">
@@ -843,14 +874,14 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
                   <div className="flex gap-2">
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleEditProg(prog); }}
-                      className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-all border border-white/10"
+                      className="p-2 bg-amber-500/20 hover:bg-amber-500 rounded-xl transition-all border border-white/10 text-amber-200 hover:text-white"
                       title="Edit Program"
                     >
                       <Edit3 size={18} />
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleDeleteProg(prog.id); }}
-                      className="p-2 bg-red-500/20 hover:bg-red-500/40 rounded-xl transition-all border border-white/10 text-red-200"
+                      className="p-2 bg-rose-500/20 hover:bg-rose-500 rounded-xl transition-all border border-white/10 text-rose-200 hover:text-white"
                       title="Hapus Program"
                     >
                       <Trash2 size={18} />
@@ -914,14 +945,14 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
                             <div className="flex items-center gap-1.5 ml-4">
                               <button 
                                 onClick={(e) => { e.stopPropagation(); handleEditKeg(prog.id, keg); }}
-                                className="p-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
+                                className="p-2 text-amber-500 hover:text-white bg-amber-50 hover:bg-amber-500 rounded-lg transition-all shadow-sm"
                                 title="Edit Kegiatan"
                               >
                                 <Edit3 size={16} />
                               </button>
                               <button 
                                 onClick={(e) => { e.stopPropagation(); handleDeleteKeg(prog.id, keg.id); }}
-                                className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                className="p-2 text-rose-500 hover:text-white bg-rose-50 hover:bg-rose-500 rounded-lg transition-all shadow-sm"
                                 title="Hapus Kegiatan"
                               >
                                 <Trash2 size={16} />
@@ -967,17 +998,17 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
                                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pagu Sub</p>
                                           <p className="text-lg font-black text-primary">{formatCurrency(sub.pagu)}</p>
                                         </div>
-                                        <div className="flex items-center gap-1.5 ml-4">
+                                         <div className="flex items-center gap-1.5 ml-4">
                                           <button 
                                             onClick={() => handleEditSub(prog.id, keg.id, sub)}
-                                            className="p-2 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-all border border-slate-100"
+                                            className="p-2 text-amber-500 hover:text-white bg-amber-50 hover:bg-amber-500 rounded-lg transition-all border border-amber-100 shadow-sm"
                                             title="Edit Sub Kegiatan"
                                           >
                                             <Edit3 size={16} />
                                           </button>
                                           <button 
                                             onClick={() => handleDeleteSub(prog.id, keg.id, sub.id)}
-                                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all border border-slate-100"
+                                            className="p-2 text-rose-500 hover:text-white bg-rose-50 hover:bg-rose-500 rounded-lg transition-all border border-rose-100 shadow-sm"
                                             title="Hapus Sub Kegiatan"
                                           >
                                             <Trash2 size={16} />
@@ -1055,7 +1086,7 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
                                                     {packets.some(p => p.belanjaId === bel.id) && (
                                                       <button 
                                                         onClick={() => onNavigate && onNavigate('database_spj')}
-                                                        className="p-1.5 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all"
+                                                        className="p-1.5 text-emerald-500 hover:text-white bg-emerald-50 hover:bg-emerald-500 rounded-lg transition-all shadow-sm"
                                                         title="Lihat SPJ Terkait"
                                                       >
                                                         <FileSpreadsheet size={14} />
@@ -1063,14 +1094,14 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
                                                     )}
                                                     <button 
                                                       onClick={() => handleEditBelanja(prog.id, keg.id, sub.id, bel)}
-                                                      className="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-lg transition-all"
+                                                      className="p-1.5 text-amber-500 hover:text-white bg-amber-50 hover:bg-amber-500 rounded-lg transition-all shadow-sm"
                                                       title="Edit Belanja"
                                                     >
                                                       <Edit3 size={14} />
                                                     </button>
                                                     <button 
                                                       onClick={() => handleDeleteBelanja(prog.id, keg.id, sub.id, bel.id)}
-                                                      className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                                      className="p-1.5 text-rose-500 hover:text-white bg-rose-50 hover:bg-rose-500 rounded-lg transition-all shadow-sm"
                                                       title="Hapus Belanja"
                                                     >
                                                       <Trash2 size={14} />

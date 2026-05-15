@@ -33,14 +33,36 @@ export interface Packet {
   regulasiAcuan?: string;
   nomorBerkas?: string;
   nomorKontrak?: string;
+  nomorSPPBJ?: string;
+  nomorSPMK?: string;
+  tanggalSPPBJ?: string;
+  tanggalSPMK?: string;
+  statusPPN?: 'Termasuk PPN' | 'Diluar PPN';
+  statusPPh?: 'Termasuk PPh' | 'Diluar PPh';
+  jenisPPh?: '21' | '22' | '23' | '4(2)';
+  usePPN?: boolean;
+  usePPh21?: boolean;
+  usePPh22?: boolean;
+  usePPh23?: boolean;
+  usePPh42?: boolean;
+  nilaiPPN?: number;
+  nilaiPPh?: number;
+  nilaiPPh21?: number;
+  nilaiPPh22?: number;
+  nilaiPPh23?: number;
+  nilaiPPh42?: number;
   rekapBelanja?: ShoppingItem[];
+  tenagaAhli?: string;
+  ruangLingkup?: string;
+  lokasiPekerjaan?: string;
+  merkType?: string;
   belanjaId?: string; // Link to Database Anggaran
   progId?: string;
   kegId?: string;
   subId?: string;
 }
 
-export type DocumentType = 'RAB' | 'Kwitansi' | 'SuratPesanan' | 'Kontrak' | 'Ringkasan' | 'BAST' | 'LaporanSPJ' | null;
+export type DocumentType = 'RAB' | 'Kwitansi' | 'SuratPesanan' | 'Kontrak' | 'Ringkasan' | 'BAST' | 'LaporanSPJ' | 'BAP' | 'SPPBJ' | 'SPMK' | null;
 
 export interface SPJChecklist {
   suratPengantar: boolean;
@@ -72,6 +94,7 @@ export interface SubKegiatan {
   kode: string;
   nama: string;
   pagu: number;
+  realisasi?: number;
   assignedTo?: string; // Departemen/Grup yang berwenang
   belanja: Belanja[];
 }
@@ -81,6 +104,7 @@ export interface Kegiatan {
   kode: string;
   nama: string;
   pagu: number;
+  realisasi?: number;
   assignedTo?: string; // Departemen/Grup yang berwenang
   subKegiatan: SubKegiatan[];
 }
@@ -90,6 +114,7 @@ export interface Program {
   kode: string;
   nama: string;
   pagu: number;
+  realisasi?: number;
   kegiatan: Kegiatan[];
 }
 
@@ -99,6 +124,21 @@ export interface Employee {
   nip: string;
   jabatan: string;
   pangkatGolongan?: string;
+}
+
+export interface Vendor {
+  id: string;
+  namaPenyedia: string;
+  namaPimpinan: string;
+  alamat: string;
+  npwp: string;
+  bank: string;
+  nomorRekening: string;
+  telepon: string;
+  email: string;
+  kategori: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface User {
@@ -111,4 +151,4 @@ export interface User {
   departemen?: string;
 }
 
-export type ActiveTab = 'dashboard' | 'database_spj' | 'database_anggaran' | 'kalkulator_pajak' | 'laporan_realisasi' | 'checklist' | 'database_pegawai' | 'database_user' | 'settings';
+export type ActiveTab = 'dashboard' | 'database_spj' | 'database_anggaran' | 'kalkulator_pajak' | 'laporan_realisasi' | 'checklist' | 'database_pegawai' | 'database_vendor' | 'database_user' | 'settings';

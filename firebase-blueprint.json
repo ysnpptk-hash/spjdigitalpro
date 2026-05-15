@@ -53,6 +53,22 @@
         "metodePengadaan": { "type": "string" },
         "regulasiAcuan": { "type": "string" },
         "nomorBerkas": { "type": "string" },
+        "statusPPN": { "type": "string" },
+        "statusPPh": { "type": "string" },
+        "jenisPPh": { "type": "string" },
+        "usePPN": { "type": "boolean" },
+        "usePPh22": { "type": "boolean" },
+        "usePPh23": { "type": "boolean" },
+        "usePPh42": { "type": "boolean" },
+        "nilaiPPN": { "type": "number" },
+        "nilaiPPh": { "type": "number" },
+        "nilaiPPh22": { "type": "number" },
+        "nilaiPPh23": { "type": "number" },
+        "nilaiPPh42": { "type": "number" },
+        "tenagaAhli": { "type": "string" },
+        "ruangLingkup": { "type": "string" },
+        "lokasiPekerjaan": { "type": "string" },
+        "merkType": { "type": "string" },
         "rekapBelanja": { "type": "array" },
         "createdAt": { "type": "string", "format": "date-time" },
         "updatedAt": { "type": "string", "format": "date-time" }
@@ -82,6 +98,24 @@
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       }
+    },
+    "Vendor": {
+      "title": "Vendor",
+      "description": "Partner, provider, or vendor for procurement",
+      "type": "object",
+      "properties": {
+        "namaPenyedia": { "type": "string" },
+        "namaPimpinan": { "type": "string" },
+        "alamat": { "type": "string" },
+        "npwp": { "type": "string" },
+        "bank": { "type": "string" },
+        "nomorRekening": { "type": "string" },
+        "telepon": { "type": "string" },
+        "email": { "type": "string" },
+        "kategori": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -108,6 +142,10 @@
     "employees/{employeeId}": {
       "schema": "Employee",
       "description": "Employee database"
+    },
+    "vendors/{vendorId}": {
+      "schema": "Vendor",
+      "description": "Vendor database"
     },
     "test/connection": {
       "schema": { "type": "object", "properties": { "status": { "type": "string" } } },

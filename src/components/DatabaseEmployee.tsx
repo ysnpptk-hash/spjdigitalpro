@@ -232,10 +232,10 @@ export default function DatabaseEmployee() {
                     </td>
                     <td className="px-6 py-5 text-right">
                       <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                        <button onClick={() => handleEdit(emp)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm">
+                        <button onClick={() => handleEdit(emp)} className="p-2 text-amber-500 hover:text-white transition-all bg-amber-50 hover:bg-amber-500 border border-amber-100 rounded-xl shadow-sm hover:shadow-lg">
                           <Edit3 size={16} />
                         </button>
-                        <button onClick={() => handleDelete(emp.id)} className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm">
+                        <button onClick={() => handleDelete(emp.id)} className="p-2 text-rose-500 hover:text-white transition-all bg-rose-50 hover:bg-rose-500 border border-rose-100 rounded-xl shadow-sm hover:shadow-lg">
                           <Trash2 size={16} />
                         </button>
                       </div>

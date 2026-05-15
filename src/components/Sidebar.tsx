@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { 
   LayoutDashboard, Database, Calculator, FileText, 
-  CheckSquare, LogOut, Settings, User, Bell, FolderTree, Shield
+  CheckSquare, LogOut, Settings, User, Bell, FolderTree, Shield, Truck
 } from 'lucide-react';
 import { ActiveTab } from '../types';
 import { cn } from '../lib/utils';
@@ -30,6 +30,7 @@ export default function Sidebar({ activeTab, setActiveTab, agencyInfo, user, onL
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'database_pegawai', label: 'Database Pegawai', icon: User },
+    { id: 'database_vendor', label: 'Database Rekanan', icon: Truck },
     { id: 'database_anggaran', label: 'Database Anggaran', icon: FolderTree },
     { id: 'database_spj', label: 'Database SPJ Barjas', icon: Database },
     { id: 'kalkulator_pajak', label: 'Kalkulator Pajak', icon: Calculator },

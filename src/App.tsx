@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard';
 import DatabaseSPJ from './components/DatabaseSPJ';
 import DatabaseAnggaran from './components/DatabaseAnggaran';
 import DatabaseEmployee from './components/DatabaseEmployee';
+import DatabaseVendor from './components/DatabaseVendor';
 import DatabaseUser from './components/DatabaseUser';
 import KalkulatorPajak from './components/KalkulatorPajak';
 import LaporanRealisasi from './components/LaporanRealisasi';
@@ -143,6 +144,7 @@ export default function App() {
       case 'dashboard': return <Dashboard />;
       case 'database_spj': return <DatabaseSPJ agencyInfo={agencyInfo} setAgencyInfo={setAgencyInfo} />;
       case 'database_pegawai': return <DatabaseEmployee />;
+      case 'database_vendor': return <DatabaseVendor />;
       case 'database_user': return <DatabaseUser currentUser={user} />;
       case 'database_anggaran': return <DatabaseAnggaran currentUser={user} onNavigate={setActiveTab} />;
       case 'kalkulator_pajak': return <KalkulatorPajak />;

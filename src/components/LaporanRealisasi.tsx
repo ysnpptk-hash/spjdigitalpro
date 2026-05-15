@@ -158,20 +158,56 @@ export default function LaporanRealisasi({ agencyInfo, packet: initialPacket }: 
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white shadow-2xl rounded-sm p-12 md:p-16 border-t-8 border-slate-900 print:shadow-none print:border-none font-serif"
+        className="bg-white shadow-2xl rounded-sm p-12 md:p-16 border-t-8 border-slate-900 print:shadow-none print:border-none print:p-0 print:m-0 font-serif"
+        id="printable-report"
       >
+        <style dangerouslySetInnerHTML={{ __html: `
+          @media print {
+            @page {
+              size: A4;
+              margin: 1.5cm 2cm;
+            }
+            body {
+              background: white !important;
+              -webkit-print-color-adjust: exact;
+              font-family: 'Times New Roman', serif;
+            }
+            .print-hidden {
+              display: none !important;
+            }
+            #printable-report {
+              padding: 0 !important;
+              margin: 0 !important;
+              border: none !important;
+              box-shadow: none !important;
+              width: 100% !important;
+            }
+            .glass-card {
+              border: none !important;
+              box-shadow: none !important;
+            }
+          }
+        `}} />
+
         {/* Letterhead / Kop Surat */}
-        <div className="flex flex-col items-center text-center border-b-4 border-double border-slate-900 pb-6 mb-8">
-          <div className="flex items-center gap-6 mb-4">
-            <div className="w-20 h-20 bg-slate-50 flex items-center justify-center p-2 border-2 border-slate-200">
-               {agencyInfo.logo ? <img src={agencyInfo.logo} alt="Logo" className="w-full h-full object-contain" /> : <div className="text-[10px] font-black text-slate-300 uppercase">Logo Instansi</div>}
-            </div>
-            <div className="text-center">
-              <h2 className="text-2xl font-black uppercase tracking-tighter leading-tight font-sans">PEMERINTAH PROVINSI KALIMANTAN TENGAH</h2>
-              <h1 className="text-xl font-black uppercase tracking-normal leading-tight font-sans">{agencyInfo.name}</h1>
-              <p className="text-[10px] font-bold text-slate-500 mt-2 font-sans italic max-w-xl">{agencyInfo.address}</p>
-            </div>
+        <div className="flex items-center gap-4 border-b-[3px] border-double border-slate-900 pb-3 mb-8">
+          <div className="w-20 h-20 flex-shrink-0">
+             {agencyInfo.logo ? (
+               <img src={agencyInfo.logo} alt="Logo" className="w-full h-full object-contain" />
+             ) : (
+               <div className="w-full h-full border border-dashed border-slate-300 flex items-center justify-center p-2 text-[8px] font-black text-slate-300 uppercase text-center">Logo Instansi</div>
+             )}
           </div>
+          <div className="flex-grow text-center">
+            <h2 className="text-[18px] font-black uppercase tracking-tight leading-tight font-sans">PEMERINTAH PROVINSI KALIMANTAN TENGAH</h2>
+            <h1 className="text-[22px] font-black uppercase tracking-normal leading-tight font-sans">SEKRETARIAT DEWAN PERWAKILAN RAKYAT DAERAH</h1>
+            <p className="text-[11px] font-medium text-slate-800 mt-1 font-sans italic leading-tight">
+              Jalan S. Parman Nomor 2 Palangka Raya, Kalimantan Tengah<br />
+              Telepon (0536) 3221327, Faksimile (0536) 3221327<br />
+              Laman: setwan.kaltengprov.go.id
+            </p>
+          </div>
+          <div className="w-20 hidden md:block" /> {/* Spacer for centering text */}
         </div>
 
         {/* Title & Reference */}
@@ -182,20 +218,21 @@ export default function LaporanRealisasi({ agencyInfo, packet: initialPacket }: 
 
         {/* Body Sections */}
         <div className="space-y-10 font-sans">
-          <section className="space-y-4">
-            <h3 className="text-xs font-black bg-slate-900 text-white px-4 py-1.5 uppercase tracking-widest inline-block">I. DATA UMUM KEGIATAN</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-2 pl-4 border-l-2 border-slate-200">
+          <section className="space-y-3">
+            <h3 className="text-[10px] font-black bg-slate-900 text-white px-3 py-1 uppercase tracking-widest inline-block">I. DATA UMUM KEGIATAN</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-1.5 pl-4 border-l-2 border-slate-200">
               {[
                 { label: 'Program', value: data.linkedProgName },
                 { label: 'Kegiatan', value: data.linkedKegName },
                 { label: 'Sub-Kegiatan', value: data.linkedSubName },
                 { label: 'Tahun Anggaran', value: data.tahun },
                 { label: 'PPTK Pengampu', value: data.pic },
-                { label: 'Lokasi', value: data.lokasi },
+                { label: 'Lokasi Pekerjaan', value: data.lokasi },
               ].map((item, i) => (
-                <div key={i} className="flex justify-between items-center py-1 border-b border-slate-50">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">{item.label}</span>
-                  <span className="text-[11px] font-black text-slate-900">{item.value}</span>
+                <div key={i} className="flex items-start py-1 border-b border-slate-50 last:border-0 gap-2">
+                  <span className="text-[9px] font-bold text-slate-500 uppercase w-36 shrink-0">{item.label}</span>
+                  <span className="text-[10px] font-black text-slate-400">:</span>
+                  <span className="text-[10px] font-black text-slate-900 flex-grow leading-tight">{item.value || '-'}</span>
                 </div>
               ))}
             </div>
@@ -203,41 +240,73 @@ export default function LaporanRealisasi({ agencyInfo, packet: initialPacket }: 
 
           <section className="space-y-4">
             <h3 className="text-xs font-black bg-slate-900 text-white px-4 py-1.5 uppercase tracking-widest inline-block">II. RINGKASAN REALISASI ANGGARAN</h3>
-            <div className="border-2 border-slate-900 overflow-hidden">
-              <table className="w-full text-[11px] font-bold border-collapse">
-                <thead className="bg-slate-100 border-b-2 border-slate-900 uppercase">
+            <div className="border border-slate-900">
+              <table className="w-full text-[10px] border-collapse">
+                <thead className="bg-slate-50 border-b border-slate-900 uppercase font-black">
                   <tr>
-                    <th className="px-4 py-3 text-left border-r border-slate-900">Deskripsi Anggaran</th>
-                    <th className="px-4 py-3 text-right border-r border-slate-900">Pagu (DPA)</th>
-                    <th className="px-4 py-3 text-right border-r border-slate-900">Realisasi (SPJ)</th>
-                    <th className="px-4 py-3 text-center">Sisa/Persentase</th>
+                    <th className="px-3 py-2 text-left border-r border-slate-900 w-[45%]">Deskripsi Anggaran / Belanja</th>
+                    <th className="px-3 py-2 text-right border-r border-slate-900 w-[18%]">Pagu Anggaran</th>
+                    <th className="px-3 py-2 text-right border-r border-slate-900 w-[18%]">Realisasi (SPJ)</th>
+                    <th className="px-3 py-2 text-center w-[19%]">Status Realisasi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-300">
                   <tr className="bg-white">
-                    <td className="px-4 py-3 border-r border-slate-900 uppercase">{packet?.kategori || 'Belanja Modal'} / Jasa</td>
-                    <td className="px-4 py-3 text-right border-r border-slate-900">{formatCurrency(data.pagu)}</td>
-                    <td className="px-4 py-3 text-right border-r border-slate-900 text-indigo-600">{formatCurrency(data.realisasi)}</td>
-                    <td className="px-4 py-3 text-center bg-slate-50">
+                    <td className="px-3 py-2 border-r border-slate-900 uppercase">{packet?.kategori || 'Belanja Modal'} / Jasa</td>
+                    <td className="px-3 py-2 text-right border-r border-slate-900">{formatCurrency(data.pagu)}</td>
+                    <td className="px-3 py-2 text-right border-r border-slate-900 text-indigo-700 font-black">{formatCurrency(data.realisasi)}</td>
+                    <td className="px-3 py-2 text-center bg-slate-50/30">
                       <div className="flex flex-col items-center">
-                        <span className="text-green-600">{percentage.toFixed(2)}%</span>
-                        <span className="text-[9px] text-slate-400">SISA: {formatCurrency(sisa)}</span>
+                        <span className="text-green-700 font-black">{percentage.toFixed(2)}%</span>
+                        <span className="text-[8px] text-slate-500 font-bold">SISA: {formatCurrency(sisa)}</span>
                       </div>
                     </td>
                   </tr>
-                  <tr className="bg-slate-50/50">
-                    <td className="px-4 py-3 border-r border-slate-900 uppercase italic pl-8 text-slate-500">Pajak Pertambahan Nilai (PPN 11%)</td>
-                    <td className="px-4 py-3 text-right border-r border-slate-900 text-slate-400">{formatCurrency(data.realisasi * 0.11)}</td>
-                    <td className="px-4 py-3 text-right border-r border-slate-900 text-slate-400">{formatCurrency(data.realisasi * 0.11)}</td>
-                    <td className="px-4 py-3 text-center text-slate-300">-</td>
+                  <tr className="bg-slate-50/10 text-slate-500 font-medium">
+                    <td className="px-3 py-2 border-r border-slate-900 uppercase italic pl-6">Pajak Pertambahan Nilai (PPN 11%)</td>
+                    <td className="px-3 py-2 text-right border-r border-slate-900">{formatCurrency(packet?.nilaiPPN || 0)}</td>
+                    <td className="px-3 py-2 text-right border-r border-slate-900">{formatCurrency(packet?.nilaiPPN || 0)}</td>
+                    <td className="px-3 py-2 text-center text-slate-300">-</td>
                   </tr>
+                  {packet?.nilaiPPh22 ? (
+                    <tr className="bg-slate-50/10 text-slate-500 font-medium">
+                      <td className="px-3 py-2 border-r border-slate-900 uppercase italic pl-6">Pajak Penghasilan (PPh 22)</td>
+                      <td className="px-3 py-2 text-right border-r border-slate-900">{formatCurrency(packet.nilaiPPh22)}</td>
+                      <td className="px-3 py-2 text-right border-r border-slate-900">{formatCurrency(packet.nilaiPPh22)}</td>
+                      <td className="px-3 py-2 text-center text-slate-300">-</td>
+                    </tr>
+                  ) : null}
+                  {packet?.nilaiPPh23 ? (
+                    <tr className="bg-slate-50/10 text-slate-500 font-medium">
+                      <td className="px-3 py-2 border-r border-slate-900 uppercase italic pl-6">Pajak Penghasilan (PPh 23)</td>
+                      <td className="px-3 py-2 text-right border-r border-slate-900">{formatCurrency(packet.nilaiPPh23)}</td>
+                      <td className="px-3 py-2 text-right border-r border-slate-900">{formatCurrency(packet.nilaiPPh23)}</td>
+                      <td className="px-3 py-2 text-center text-slate-300">-</td>
+                    </tr>
+                  ) : null}
+                  {packet?.nilaiPPh42 ? (
+                    <tr className="bg-slate-50/10 text-slate-500 font-medium">
+                      <td className="px-3 py-2 border-r border-slate-900 uppercase italic pl-6">Pajak Penghasilan (PPh Pasal 4 Ayat 2)</td>
+                      <td className="px-3 py-2 text-right border-r border-slate-900">{formatCurrency(packet.nilaiPPh42)}</td>
+                      <td className="px-3 py-2 text-right border-r border-slate-900">{formatCurrency(packet.nilaiPPh42)}</td>
+                      <td className="px-3 py-2 text-center text-slate-300">-</td>
+                    </tr>
+                  ) : null}
+                  {!packet?.nilaiPPh22 && !packet?.nilaiPPh23 && !packet?.nilaiPPh42 && (
+                    <tr className="bg-slate-50/10 text-slate-500 font-medium italic">
+                      <td className="px-3 py-2 border-r border-slate-900 pl-6 uppercase">Pajak Penghasilan (PPh)</td>
+                      <td className="px-3 py-2 text-right border-r border-slate-900">0</td>
+                      <td className="px-3 py-2 text-right border-r border-slate-900">0</td>
+                      <td className="px-3 py-2 text-center text-slate-300">-</td>
+                    </tr>
+                  )}
                 </tbody>
-                <tfoot className="bg-slate-900 text-white font-black text-sm uppercase">
+                <tfoot className="bg-slate-900 text-white font-black text-[11px] uppercase">
                   <tr>
-                    <td className="px-4 py-4 border-r border-white/20">Total Akumulasi Realisasi</td>
-                    <td className="px-4 py-4 text-right border-r border-white/20 opacity-50 text-[10px]">{formatCurrency(data.pagu)}</td>
-                    <td className="px-4 py-4 text-right text-lg">{formatCurrency(data.realisasi)}</td>
-                    <td className="px-4 py-4 text-center text-green-400 text-xs text-uppercase">{percentage >= 100 ? 'FISIK 100%' : 'TERVERIFIKASI'}</td>
+                    <td className="px-3 py-2 border-r border-white/20">Total Akumulasi Realisasi</td>
+                    <td className="px-3 py-2 text-right border-r border-white/20 opacity-70 text-[9px]">{formatCurrency(data.pagu)}</td>
+                    <td className="px-3 py-2 text-right text-sm">{formatCurrency(data.realisasi)}</td>
+                    <td className="px-3 py-2 text-center">{percentage >= 100 ? 'FISIK 100%' : `${percentage.toFixed(0)}% SELESAI`}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -261,26 +330,23 @@ export default function LaporanRealisasi({ agencyInfo, packet: initialPacket }: 
           </section>
 
           {/* Signatures Cluster */}
-          <div className="mt-20 grid grid-cols-2 gap-x-24 text-center font-sans relative">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-5 pointer-events-none">
-              <QrCode size={120} />
-            </div>
-            <div className="space-y-20">
+          <div className="mt-12 grid grid-cols-2 gap-x-24 text-center font-sans relative">
+            <div className="space-y-16">
               <div>
-                <p className="text-[10px] font-black uppercase text-slate-400">Mengetahui/Mengesahkan,<br /><span className="text-slate-900">Pejabat Pembuat Komitmen (PPK)</span></p>
+                <p className="text-[10px] font-black uppercase text-slate-500">Mengetahui/Mengesahkan,<br /><span className="text-slate-900">Kuasa Pengguna Anggaran (KPA)</span></p>
               </div>
-              <div>
-                <p className="text-sm font-black uppercase underline decoration-2 underline-offset-4">Dr. Heri Santoso, M.Epid</p>
-                <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase">NIP. 19780512 200501 1 003</p>
+              <div className="flex flex-col items-center">
+                <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-2">H. NURUL ANWAR, SH., M.AP</p>
+                <p className="text-[9px] font-bold text-slate-500 mt-0.5">NIP. 19710520 199203 1 005</p>
               </div>
             </div>
-            <div className="space-y-20">
+            <div className="space-y-16">
               <div>
-                <p className="text-[10px] font-black uppercase text-slate-400">Palangka Raya, {formatDate(new Date().toISOString())}<br /><span className="text-slate-900">Pejabat Pelaksana Teknis Kegiatan (PPTK)</span></p>
+                <p className="text-[10px] font-black uppercase text-slate-500">Palangka Raya, {formatDate(new Date().toISOString())}<br /><span className="text-slate-900">Pejabat Pelaksana Teknis Kegiatan (PPTK)</span></p>
               </div>
-              <div>
-                <p className="text-sm font-black uppercase underline decoration-2 underline-offset-4">{data.pic}</p>
-                <p className="text-[10px] font-bold text-slate-500 mt-1 uppercase">NIP. {data.nipPic}</p>
+              <div className="flex flex-col items-center">
+                <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-2">{data.pic}</p>
+                <p className="text-[9px] font-bold text-slate-500 mt-0.5">NIP. {data.nipPic}</p>
               </div>
             </div>
           </div>
