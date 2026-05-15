@@ -1,0 +1,117 @@
+{
+  "entities": {
+    "AuthorizedUser": {
+      "title": "Authorized User",
+      "description": "User allowed to log in to the system",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["Super Admin", "Admin", "Pengguna"] },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "status": { "type": "string", "enum": ["Aktif", "Non-Aktif"] },
+        "departemen": { "type": "string" }
+      },
+      "required": ["email", "role"]
+    },
+    "UsernameMapping": {
+      "title": "Username Mapping",
+      "description": "Mapping from username to email for login flexibility",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" }
+      },
+      "required": ["email"]
+    },
+    "AgencyInfo": {
+      "title": "Agency Info",
+      "description": "Information about the government agency",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "address": { "type": "string" },
+        "logo": { "type": "string" }
+      }
+    },
+    "Packet": {
+      "title": "SPJ Packet",
+      "description": "A procurement packet and its associated SPJ documents",
+      "type": "object",
+      "properties": {
+        "no": { "type": "number" },
+        "namaPaket": { "type": "string" },
+        "kategori": { "type": "string" },
+        "penyedia": { "type": "string" },
+        "paguAnggaran": { "type": "number" },
+        "nilaiKontrak": { "type": "number" },
+        "tanggalMulai": { "type": "string" },
+        "tanggalSelesai": { "type": "string" },
+        "progressFisik": { "type": "number" },
+        "statusDokumen": { "type": "string", "enum": ["Draft", "Proses", "Selesai", "Revisi"] },
+        "pic": { "type": "string" },
+        "metodePengadaan": { "type": "string" },
+        "regulasiAcuan": { "type": "string" },
+        "nomorBerkas": { "type": "string" },
+        "rekapBelanja": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Program": {
+      "title": "Budget Program",
+      "description": "Budget program following the SIPD hierarchy",
+      "type": "object",
+      "properties": {
+        "kode": { "type": "string" },
+        "nama": { "type": "string" },
+        "pagu": { "type": "number" },
+        "realisasi": { "type": "number" },
+        "kegiatan": { "type": "array" }
+      }
+    },
+    "Employee": {
+      "title": "Employee",
+      "description": "Employee or official in the agency",
+      "type": "object",
+      "properties": {
+        "nama": { "type": "string" },
+        "nip": { "type": "string" },
+        "jabatan": { "type": "string" },
+        "pangkatGolongan": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "authorized_users/{email}": {
+      "schema": "AuthorizedUser",
+      "description": "Users authorized to access the system"
+    },
+    "usernames/{username}": {
+      "schema": "UsernameMapping",
+      "description": "Map usernames to emails"
+    },
+    "settings/agency": {
+      "schema": "AgencyInfo",
+      "description": "Agency profile settings"
+    },
+    "packets/{packetId}": {
+      "schema": "Packet",
+      "description": "List of SPJ packets"
+    },
+    "programs/{programId}": {
+      "schema": "Program",
+      "description": "Budget management hierarchy"
+    },
+    "employees/{employeeId}": {
+      "schema": "Employee",
+      "description": "Employee database"
+    },
+    "test/connection": {
+      "schema": { "type": "object", "properties": { "status": { "type": "string" } } },
+      "description": "Document for testing database connection"
+    }
+  }
+}

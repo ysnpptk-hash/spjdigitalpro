@@ -1,0 +1,1545 @@
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Database, Plus, Search, Filter, Download, Layers, CreditCard,
+  FileText, Receipt, FileSignature, ClipboardCheck, FileCheck,
+  Truck, CheckCircle2, ShieldCheck, Clock, AlertCircle, X, ChevronRight,
+  MoreVertical, Edit3, Printer, Trash2, QrCode
+} from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { DocumentType, Packet, ShoppingItem, Program } from '../types';
+import { formatCurrency, formatDate, cn, terbilang } from '../lib/utils';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import LaporanRealisasi from './LaporanRealisasi';
+import { collection, onSnapshot, doc, setDoc, getDoc, deleteDoc, query, orderBy, updateDoc } from 'firebase/firestore';
+
+interface DatabaseSPJProps {
+  agencyInfo: {
+    name: string;
+    address: string;
+    logo: string;
+  };
+  setAgencyInfo: React.Dispatch<React.SetStateAction<{
+    name: string;
+    address: string;
+    logo: string;
+  }>>;
+}
+
+export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJProps) {
+  const [spjList, setSpjList] = useState<Packet[]>([]);
+  const [programs, setPrograms] = useState<Program[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState<string>('Semua');
+
+  useEffect(() => {
+    // Fetch Packets
+    const qPackets = query(collection(db, 'packets'), orderBy('no', 'asc'));
+    const unsubscribePackets = onSnapshot(qPackets, (snapshot) => {
+      const data: Packet[] = [];
+      snapshot.forEach(doc => {
+        data.push({ id: doc.id, ...doc.data() } as Packet);
+      });
+      setSpjList(data);
+      setLoading(false);
+    });
+
+    // Fetch Programs for linking
+    const qProgs = query(collection(db, 'programs'), orderBy('kode', 'asc'));
+    const unsubscribeProgs = onSnapshot(qProgs, (snapshot) => {
+      const data: Program[] = [];
+      snapshot.forEach(doc => {
+        data.push({ id: doc.id, ...doc.data() } as Program);
+      });
+      setPrograms(data);
+    });
+
+    return () => {
+      unsubscribePackets();
+      unsubscribeProgs();
+    };
+  }, []);
+
+  const [showInput, setShowInput] = useState(false);
+  const [showBudgetSelector, setShowBudgetSelector] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [selectedSpj, setSelectedSpj] = useState<Packet | null>(null);
+  const [viewingDoc, setViewingDoc] = useState<DocumentType>(null);
+  const [formData, setFormData] = useState<Partial<Packet>>({
+    namaPaket: '',
+    kategori: 'Barang',
+    penyedia: '',
+    npwpPenyedia: '',
+    bankPenyedia: '',
+    rekeningPenyedia: '',
+    paguAnggaran: 0,
+    nilaiKontrak: 0,
+    tanggalMulai: '',
+    tanggalSelesai: '',
+    pic: '',
+    nipPic: '',
+    jabatanPic: 'Pejabat Pelaksana Teknis Kegiatan',
+    metodePengadaan: 'Pengadaan Langsung',
+    regulasiAcuan: 'PerLKPP No. 2 Tahun 2025',
+    nomorBerkas: '',
+    nomorKontrak: '',
+    rekapBelanja: []
+  });
+
+  const addShoppingItem = () => {
+    const newItem: ShoppingItem = {
+      id: Math.random().toString(36).substr(2, 9),
+      uraian: '',
+      volume: 1,
+      satuan: 'Pcs',
+      hargaSatuan: 0
+    };
+    const updatedRekap = [...(formData.rekapBelanja || []), newItem];
+    setFormData({ ...formData, rekapBelanja: updatedRekap });
+  };
+
+  const removeShoppingItem = (id: string) => {
+    const updatedRekap = (formData.rekapBelanja || []).filter(item => item.id !== id);
+    setFormData({ ...formData, rekapBelanja: updatedRekap });
+  };
+
+  const updateShoppingItem = (id: string, field: keyof ShoppingItem, value: any) => {
+    const updatedRekap = (formData.rekapBelanja || []).map(item => 
+      item.id === id ? { ...item, [field]: value } : item
+    );
+    
+    // Auto calculate nilaiKontrak if there are items
+    const newTotal = updatedRekap.reduce((sum, item) => sum + (item.volume * item.hargaSatuan), 0);
+    
+    setFormData({ 
+      ...formData, 
+      rekapBelanja: updatedRekap,
+      nilaiKontrak: updatedRekap.length > 0 ? newTotal : formData.nilaiKontrak
+    });
+  };
+
+  const handleExport = () => {
+    const ws = XLSX.utils.json_to_sheet(spjList);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Database SPJ Barjas");
+    XLSX.writeFile(wb, "Database_SPJ_Barjas_Export.xlsx");
+  };
+
+  const handleEdit = (spj: Packet) => {
+    setFormData(spj);
+    setIsEditMode(true);
+    setShowInput(true);
+  };
+
+  const handleDelete = async (id: string) => {
+    if (confirm('Apakah Anda yakin ingin menghapus data SPJ ini?')) {
+      try {
+        const spj = spjList.find(p => p.id === id);
+        await deleteDoc(doc(db, 'packets', id));
+        if (spj?.belanjaId && spj?.progId) {
+          await handleBudgetSync(spj.progId);
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `packets/${id}`);
+      }
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      const id = isEditMode && formData.id ? formData.id : Math.random().toString(36).substr(2, 9);
+      const prevPacket = isEditMode ? spjList.find(p => p.id === id) : null;
+      
+      const packetData = {
+        ...formData,
+        id,
+        no: isEditMode ? formData.no : spjList.length + 1,
+        progressFisik: isEditMode ? formData.progressFisik : 0,
+        statusDokumen: isEditMode ? formData.statusDokumen : 'Draft',
+        updatedAt: new Date().toISOString()
+      };
+
+      if (!isEditMode) {
+        (packetData as any).createdAt = new Date().toISOString();
+      }
+
+      await setDoc(doc(db, 'packets', id), packetData);
+
+      // Link to Budget Database - Sync Realisasi
+      if (packetData.belanjaId && packetData.progId) {
+        await handleBudgetSync(packetData.progId);
+      }
+      
+      // If the belanja link was changed, we might need to sync the old one too
+      if (prevPacket && prevPacket.belanjaId && prevPacket.progId && prevPacket.belanjaId !== packetData.belanjaId) {
+        await handleBudgetSync(prevPacket.progId);
+      }
+
+      setShowInput(false);
+      setIsEditMode(false);
+      resetForm();
+    } catch (error) {
+      handleFirestoreError(error, isEditMode ? OperationType.UPDATE : OperationType.CREATE, 'packets');
+    }
+  };
+
+  // Improved sync with getDocs
+  const handleBudgetSync = async (programId: string) => {
+    const { getDocs } = await import('firebase/firestore');
+    const packetsSnap = await getDocs(query(collection(db, 'packets')));
+    const allPackets: Packet[] = [];
+    packetsSnap.forEach(d => allPackets.push(d.data() as Packet));
+
+    const progDoc = await getDoc(doc(db, 'programs', programId));
+    if (!progDoc.exists()) return;
+    const program = progDoc.data() as Program;
+
+    const updatedProgram = {
+      ...program,
+      kegiatan: program.kegiatan.map(keg => ({
+        ...keg,
+        subKegiatan: keg.subKegiatan.map(sub => ({
+          ...sub,
+          belanja: sub.belanja.map(bel => {
+            const linkedPackets = allPackets.filter(p => p.belanjaId === bel.id);
+            const realisasi = linkedPackets.reduce((sum, p) => sum + p.nilaiKontrak, 0);
+            return { ...bel, realisasi };
+          })
+        }))
+      }))
+    };
+
+    // Recalculate totals
+    const finalProg = recalculateProgramTotals(updatedProgram);
+    await updateDoc(doc(db, 'programs', programId), finalProg as any);
+  };
+
+  const recalculateProgramTotals = (p: Program) => {
+    const activities = p.kegiatan.map(k => {
+      const subActivities = k.subKegiatan.map(sk => {
+        const totalBelanjaPagu = sk.belanja.reduce((sum, b) => sum + b.pagu, 0);
+        const totalBelanjaRealisasi = sk.belanja.reduce((sum, b) => sum + (b.realisasi || 0), 0);
+        return { ...sk, pagu: totalBelanjaPagu, realisasi: totalBelanjaRealisasi };
+      });
+      const totalKegPagu = subActivities.reduce((sum, sk) => sum + sk.pagu, 0);
+      const totalKegRealisasi = subActivities.reduce((sum, sk) => sum + (sk.realisasi || 0), 0);
+      return { ...k, subKegiatan: subActivities, pagu: totalKegPagu, realisasi: totalKegRealisasi };
+    });
+    const totalProgPagu = activities.reduce((sum, k) => sum + k.pagu, 0);
+    const totalProgRealisasi = activities.reduce((sum, k) => sum + (k.realisasi || 0), 0);
+    return { ...p, kegiatan: activities, pagu: totalProgPagu, realisasi: totalProgRealisasi };
+  };
+
+  const resetForm = () => {
+    setFormData({
+      namaPaket: '',
+      kategori: 'Barang',
+      penyedia: '',
+      npwpPenyedia: '',
+      bankPenyedia: '',
+      rekeningPenyedia: '',
+      paguAnggaran: 0,
+      nilaiKontrak: 0,
+      tanggalMulai: '',
+      tanggalSelesai: '',
+      pic: '',
+      nipPic: '',
+      jabatanPic: 'Pejabat Pelaksana Teknis Kegiatan',
+      metodePengadaan: 'Pengadaan Langsung',
+      regulasiAcuan: 'PerLKPP No. 2 Tahun 2025',
+      nomorBerkas: '',
+      nomorKontrak: '',
+      rekapBelanja: [],
+      belanjaId: '',
+      progId: '',
+      kegId: '',
+      subId: ''
+    });
+  };
+
+  const openInputModal = () => {
+    resetForm();
+    setIsEditMode(false);
+    setShowInput(true);
+  };
+
+  const filteredSpjList = spjList.filter(spj => {
+    const matchesSearch = (spj.namaPaket?.toLowerCase() || '').includes(searchQuery.toLowerCase()) || 
+                          (spj.penyedia?.toLowerCase() || '').includes(searchQuery.toLowerCase());
+    const matchesStatus = filterStatus === 'Semua' || spj.statusDokumen === filterStatus;
+    return matchesSearch && matchesStatus;
+  });
+
+  return (
+    <div className="space-y-8 pb-20">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div>
+          <h1 className="text-4xl font-black text-slate-900 tracking-tighter flex items-center gap-4">
+             <div className="p-3 bg-primary-metallic/10 rounded-2xl text-primary-metallic">
+              <Database size={32} />
+            </div>
+            Database <span className="text-gradient-purple">SPJ Barjas</span>
+          </h1>
+          <p className="text-slate-500 font-medium">Manajemen dokumen pertanggungjawaban dan pengadaan barang/jasa.</p>
+        </div>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => window.print()}
+            className="px-6 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm flex items-center gap-2 text-slate-600 print-hidden"
+          >
+            <Printer size={16} /> Cetak Database
+          </button>
+          <button onClick={handleExport} className="px-6 py-3 bg-white border border-slate-200 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-50 transition-all shadow-sm flex items-center gap-2">
+            <Download size={16} /> Ekspor Excel
+          </button>
+          <button onClick={openInputModal} className="px-6 py-3 metallic-purple text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:opacity-90 transition-all shadow-lg shadow-purple-500/20 flex items-center gap-2">
+            <Plus size={16} /> Input SPJ
+          </button>
+        </div>
+      </header>
+
+      {/* Database View */}
+      <div className="glass-card overflow-hidden">
+        <div className="p-6 border-b border-white/20 flex flex-col md:flex-row items-center gap-4">
+          <div className="relative flex-grow w-full">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input 
+              type="text" 
+              placeholder="Cari paket pekerjaan..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-12 pr-6 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-primary/10 transition-all text-sm font-semibold"
+            />
+          </div>
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <div className="relative flex-grow md:flex-grow-0">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <select 
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="pl-10 pr-6 py-3 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black uppercase tracking-widest focus:ring-2 focus:ring-primary/10 transition-all appearance-none cursor-pointer"
+              >
+                <option value="Semua">Semua Status</option>
+                <option value="Draft">Draft</option>
+                <option value="Proses">Proses</option>
+                <option value="Revisi">Revisi</option>
+                <option value="Selesai">Selesai</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+             <thead>
+              <tr className="bg-slate-50 text-[10px] uppercase tracking-widest font-black text-slate-400 border-b border-slate-100">
+                <th className="px-6 py-5">No</th>
+                <th className="px-6 py-5">Paket Pekerjaan / Penyedia</th>
+                <th className="px-6 py-5">Kontrak (IDR)</th>
+                <th className="px-6 py-5">Status / Dokumen</th>
+                <th className="px-6 py-5">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {filteredSpjList.map((spj) => (
+                <tr key={spj.id} className="hover:bg-slate-50/50 transition-colors group">
+                  <td className="px-6 py-5 text-sm font-black text-slate-300">#{spj.no}</td>
+                  <td className="px-6 py-5">
+                    <div className="cursor-pointer" onClick={() => setSelectedSpj(spj)}>
+                      <h4 className="font-black text-slate-900 tracking-tight">{spj.namaPaket}</h4>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-tighter mt-1">{spj.kategori} • {spj.penyedia}</p>
+                    </div>
+                  </td>
+                   <td className="px-6 py-5">
+                    <div className="space-y-1">
+                      <p className="text-xs font-bold text-slate-400 line-through">{formatCurrency(spj.paguAnggaran)}</p>
+                      <p className="text-sm font-black text-slate-900">{formatCurrency(spj.nilaiKontrak)}</p>
+                    </div>
+                  </td>
+                  <td className="px-6 py-5">
+                    <div className="flex flex-wrap gap-2">
+                       <span className={cn(
+                        "px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
+                        spj.statusDokumen === 'Selesai' ? "bg-green-50 border-green-200 text-green-600" : "bg-amber-50 border-amber-200 text-amber-600"
+                      )}>
+                        {spj.statusDokumen}
+                      </span>
+                      <div className="flex gap-2">
+                        <div title="Kwintansi" className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-slate-400 group-hover:text-primary transition-colors"><Receipt size={14} /></div>
+                        <div title="BAST" className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-slate-400 group-hover:text-primary transition-colors"><Truck size={14} /></div>
+                        <div title="Kontrak" className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-slate-400 group-hover:text-primary transition-colors"><FileSignature size={14} /></div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-5">
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => setSelectedSpj(spj)}
+                        className="p-2 text-slate-400 hover:text-primary transition-all bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md"
+                        title="Cetak Dokumen"
+                      >
+                        <Printer size={16} />
+                      </button>
+                      <button 
+                        onClick={() => handleEdit(spj)}
+                        className="p-2 text-slate-400 hover:text-blue-500 transition-all bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md"
+                        title="Edit Data"
+                      >
+                        <Edit3 size={16} />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(spj.id)}
+                        className="p-2 text-slate-400 hover:text-red-500 transition-all bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md"
+                        title="Hapus Data"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Input Modal */}
+      <AnimatePresence>
+        {showInput && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="glass-card p-10 w-full max-w-2xl max-h-[90vh] overflow-y-auto space-y-8"
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tighter uppercase">
+                    {isEditMode ? 'Edit Data Paket SPJ' : 'Input Paket SPJ Baru'}
+                  </h2>
+                  <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-1">
+                    {isEditMode ? 'Perbarui informasi dokumen dan kontrak' : 'Lengkapi detail pengadaan dan kontrak'}
+                  </p>
+                </div>
+                <button onClick={() => setShowInput(false)} className="p-2 bg-slate-100 text-slate-400 rounded-xl hover:text-red-500 transition-all">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="md:col-span-2 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Nama Paket Pekerjaan</label>
+                    <button 
+                      onClick={() => setShowBudgetSelector(true)}
+                      className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all flex items-center gap-2 border border-emerald-100"
+                    >
+                      <Layers size={14} /> Pilih Dari Anggaran (DPA)
+                    </button>
+                  </div>
+                  <input 
+                    type="text" 
+                    value={formData.namaPaket}
+                    onChange={(e) => setFormData({...formData, namaPaket: e.target.value})}
+                    placeholder="Contoh: Pengadaan Alat Tulis Kantor Jilid II"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                  {formData.belanjaId && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <CheckCircle2 size={16} className="text-emerald-500" />
+                        <span className="text-[10px] font-bold text-emerald-700 uppercase">Terkoneksi ke Anggaran: <b className="ml-1">{formData.namaPaket}</b></span>
+                      </div>
+                      <button 
+                        onClick={() => setFormData({...formData, belanjaId: '', progId: '', kegId: '', subId: ''})}
+                        className="text-[10px] font-black text-emerald-600 uppercase hover:underline"
+                      >
+                        Lepas Link
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nomor Berkas / Agenda</label>
+                  <input 
+                    type="text" 
+                    value={formData.nomorBerkas}
+                    onChange={(e) => setFormData({...formData, nomorBerkas: e.target.value})}
+                    placeholder="Contoh: 001/PPTK/SETWAN/2026"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black italic text-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nomor Kontrak (Jika Ada)</label>
+                  <input 
+                    type="text" 
+                    value={formData.nomorKontrak}
+                    onChange={(e) => setFormData({...formData, nomorKontrak: e.target.value})}
+                    placeholder="Contoh: 027/01/KONTRAK/2026"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black text-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Kategori</label>
+                  <select 
+                    value={formData.kategori}
+                    onChange={(e) => setFormData({...formData, kategori: e.target.value})}
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black italic"
+                  >
+                    <option>Barang</option>
+                    <option>Jasa Konsultansi</option>
+                    <option>Konstruksi</option>
+                    <option>Jasa Lainnya</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Penyedia / Vendor</label>
+                  <input 
+                    type="text" 
+                    value={formData.penyedia}
+                    onChange={(e) => setFormData({...formData, penyedia: e.target.value})}
+                    placeholder="Nama Perusahaan"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">NPWP Penyedia</label>
+                  <input 
+                    type="text" 
+                    value={formData.npwpPenyedia}
+                    onChange={(e) => setFormData({...formData, npwpPenyedia: e.target.value})}
+                    placeholder="00.000.000.0-000.000"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Bank & No Rekening</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={formData.bankPenyedia}
+                      onChange={(e) => setFormData({...formData, bankPenyedia: e.target.value})}
+                      placeholder="Bank Kalteng"
+                      className="w-1/3 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                    />
+                    <input 
+                      type="text" 
+                      value={formData.rekeningPenyedia}
+                      onChange={(e) => setFormData({...formData, rekeningPenyedia: e.target.value})}
+                      placeholder="No Rekening"
+                      className="w-2/3 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">PIC / PPTK / PPK</label>
+                  <input 
+                    type="text" 
+                    value={formData.pic}
+                    onChange={(e) => setFormData({...formData, pic: e.target.value})}
+                    placeholder="Nama Pejabat"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">NIP Pejabat</label>
+                  <input 
+                    type="text" 
+                    value={formData.nipPic}
+                    onChange={(e) => setFormData({...formData, nipPic: e.target.value})}
+                    placeholder="19850101..."
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jabatan Pejabat</label>
+                  <input 
+                    type="text" 
+                    value={formData.jabatanPic}
+                    onChange={(e) => setFormData({...formData, jabatanPic: e.target.value})}
+                    placeholder="PPTK / PPK"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pagu Anggaran (IDR)</label>
+                  <input 
+                    type="number" 
+                    value={formData.paguAnggaran || ''}
+                    onChange={(e) => setFormData({...formData, paguAnggaran: Number(e.target.value)})}
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nilai Kontrak (IDR)</label>
+                  <input 
+                    type="number" 
+                    value={formData.nilaiKontrak || ''}
+                    onChange={(e) => setFormData({...formData, nilaiKontrak: Number(e.target.value)})}
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black text-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Periode Pelaksanaan</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="date" 
+                      value={formData.tanggalMulai}
+                      onChange={(e) => setFormData({...formData, tanggalMulai: e.target.value})}
+                      className="w-1/2 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-xs font-black"
+                    />
+                    <input 
+                      type="date" 
+                      value={formData.tanggalSelesai}
+                      onChange={(e) => setFormData({...formData, tanggalSelesai: e.target.value})}
+                      className="w-1/2 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-xs font-black"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Metode Pengadaan</label>
+                  <select 
+                    value={formData.metodePengadaan}
+                    onChange={(e) => setFormData({...formData, metodePengadaan: e.target.value as any})}
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black italic"
+                  >
+                    <option value="E-purchasing">E-purchasing</option>
+                    <option value="Tender">Tender</option>
+                    <option value="Pengadaan Langsung">Pengadaan Langsung</option>
+                    <option value="Penunjukan Langsung">Penunjukan Langsung</option>
+                    <option value="Swakelola">Swakelola</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Regulasi Acuan</label>
+                  <select 
+                    value={formData.regulasiAcuan}
+                    onChange={(e) => setFormData({...formData, regulasiAcuan: e.target.value})}
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black italic"
+                  >
+                    <option value="PerLKPP No. 2 Tahun 2025">PerLKPP No. 2 Tahun 2025</option>
+                    <option value="Perpres No. 12 Tahun 2021">Perpres No. 12 Tahun 2021</option>
+                    <option value="Permendagri No. 77 Tahun 2020">Permendagri No. 77 Tahun 2020</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Rekap Belanja Section */}
+              <div className="space-y-4 pt-4 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Rekap Belanja / Rincian Item</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Daftar barang atau jasa dalam paket ini</p>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={addShoppingItem}
+                    className="px-4 py-2 bg-primary/5 text-primary rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/10 transition-all flex items-center gap-2"
+                  >
+                    <Plus size={14} /> Tambah Item
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {formData.rekapBelanja?.map((item, index) => (
+                    <motion.div 
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      key={item.id} 
+                      className="p-4 bg-slate-50 border border-slate-100 rounded-2xl grid grid-cols-12 gap-3 items-end"
+                    >
+                      <div className="col-span-1 text-[10px] font-black text-slate-300 mb-4">#{index + 1}</div>
+                      <div className="col-span-5">
+                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Uraian Barang/Jasa</label>
+                        <input 
+                          type="text"
+                          value={item.uraian}
+                          onChange={(e) => updateShoppingItem(item.id, 'uraian', e.target.value)}
+                          placeholder="Pena, Kertas, Jasa, dll"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-primary/10 transition-all"
+                        />
+                      </div>
+                      <div className="col-span-1">
+                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Vol</label>
+                        <input 
+                          type="number"
+                          value={item.volume}
+                          onChange={(e) => updateShoppingItem(item.id, 'volume', Number(e.target.value))}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Satuan</label>
+                        <input 
+                          type="text"
+                          value={item.satuan}
+                          onChange={(e) => updateShoppingItem(item.id, 'satuan', e.target.value)}
+                          placeholder="Pcs"
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Harga</label>
+                        <input 
+                          type="number"
+                          value={item.hargaSatuan}
+                          onChange={(e) => updateShoppingItem(item.id, 'hargaSatuan', Number(e.target.value))}
+                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold"
+                        />
+                      </div>
+                      <div className="col-span-1 flex justify-center">
+                        <button 
+                          onClick={() => removeShoppingItem(item.id)}
+                          className="p-2 text-slate-300 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </motion.div>
+                  ))}
+
+                  {(!formData.rekapBelanja || formData.rekapBelanja.length === 0) && (
+                    <div className="p-8 border-2 border-dashed border-slate-100 rounded-2xl text-center">
+                      <p className="text-[10px] font-black text-slate-300 uppercase italic">Belum ada rincian item belanja</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-4 pt-6">
+                 <button onClick={() => setShowInput(false)} className="flex-grow py-4 bg-slate-100 text-slate-600 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-all">
+                  Batal
+                </button>
+                <button onClick={handleSave} className="flex-grow py-4 metallic-purple text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:opacity-90 transition-all shadow-xl shadow-purple-500/20">
+                  Simpan & Buat Dokumen
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Budget Selector Modal */}
+      <AnimatePresence>
+        {showBudgetSelector && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="glass-card p-10 w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col space-y-6"
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tighter uppercase flex items-center gap-3">
+                    <Layers className="text-primary" /> Pilih Rincian Anggaran (DPA)
+                  </h2>
+                  <p className="text-slate-400 font-bold text-xs uppercase tracking-widest mt-1">
+                    Hubungkan paket SPJ dengan mata anggaran yang tersedia
+                  </p>
+                </div>
+                <button onClick={() => setShowBudgetSelector(false)} className="p-2 bg-slate-100 text-slate-400 rounded-xl hover:text-red-500 transition-all">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="flex-grow overflow-y-auto space-y-4 pr-2">
+                {programs.map(prog => (
+                  <div key={prog.id} className="space-y-3">
+                    <div className="bg-slate-900 text-white p-4 rounded-2xl">
+                      <p className="text-[10px] font-black opacity-60 uppercase">{prog.kode}</p>
+                      <h4 className="text-sm font-black italic">{prog.nama}</h4>
+                    </div>
+                    {prog.kegiatan.map(keg => (
+                      <div key={keg.id} className="ml-6 space-y-2">
+                        <div className="bg-primary/10 p-3 rounded-xl border border-primary/10">
+                          <p className="text-[9px] font-black text-primary uppercase">{keg.kode}</p>
+                          <h5 className="text-xs font-black text-slate-800">{keg.nama}</h5>
+                        </div>
+                        {keg.subKegiatan.map(sub => (
+                          <div key={sub.id} className="ml-6 space-y-2">
+                            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                              <p className="text-[8px] font-black text-slate-400 uppercase">{sub.kode}</p>
+                              <h6 className="text-[11px] font-black text-slate-700">{sub.nama}</h6>
+                            </div>
+                            <div className="ml-6 grid grid-cols-1 md:grid-cols-2 gap-2">
+                              {sub.belanja.map(bel => (
+                                <button
+                                  key={bel.id}
+                                  onClick={() => {
+                                    setFormData({
+                                      ...formData,
+                                      namaPaket: bel.uraian,
+                                      paguAnggaran: bel.pagu,
+                                      belanjaId: bel.id,
+                                      progId: prog.id,
+                                      kegId: keg.id,
+                                      subId: sub.id,
+                                      pic: keg.assignedTo || sub.assignedTo || formData.pic,
+                                      nipPic: formData.nipPic,
+                                      metodePengadaan: 'Pengadaan Langsung'
+                                    });
+                                    setShowBudgetSelector(false);
+                                  }}
+                                  className="text-left p-4 bg-white border border-slate-100 rounded-2xl hover:border-primary/40 hover:shadow-lg transition-all group flex items-start gap-4"
+                                >
+                                  <div className="p-2 bg-slate-50 rounded-lg group-hover:bg-primary/10 text-slate-400 group-hover:text-primary transition-colors mt-1">
+                                    <CreditCard size={14} />
+                                  </div>
+                                  <div>
+                                    <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{bel.kode}</p>
+                                    <p className="text-[11px] font-black text-slate-900 group-hover:text-primary transition-colors">{bel.uraian}</p>
+                                    <div className="flex gap-4 mt-1.5 font-bold">
+                                      <p className="text-[10px] text-primary">{formatCurrency(bel.pagu)}</p>
+                                      <p className="text-[10px] text-slate-300 italic">Sisa: {formatCurrency(bel.pagu - (bel.realisasi || 0))}</p>
+                                    </div>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Document Generator Detail View */}
+      <AnimatePresence>
+        {selectedSpj && (
+          <motion.div 
+            initial={{ opacity: 0, x: 300 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 300 }}
+            className="fixed inset-y-0 right-0 w-full max-w-3xl z-[110] bg-white shadow-[-20px_0_60px_-15px_rgba(0,0,0,0.1)] flex flex-col"
+          >
+            <div className="p-8 bg-[#1e0533] text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-black italic tracking-tighter">Tools Generator Dokumen</h3>
+                <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Satu Klik untuk Cetak Seluruh SPJ</p>
+              </div>
+              <button onClick={() => setSelectedSpj(null)} className="p-2 bg-white/10 rounded-xl hover:bg-white/20 transition-all">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-grow overflow-y-auto p-10 space-y-12">
+              <section className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-1.5 h-6 bg-primary-metallic rounded-full" />
+                  <h4 className="text-lg font-black text-slate-900 uppercase">Ringkasan Paket</h4>
+                </div>
+                <div className="glass-card p-6 bg-slate-50 border-slate-100 grid grid-cols-2 gap-6">
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Paket</p>
+                    <p className="text-sm font-black text-slate-900 leading-tight italic uppercase tracking-tighter shadow-inner inline-block px-2 py-1 bg-slate-100 rounded-md">
+                      {selectedSpj.namaPaket}
+                    </p>
+                  </div>
+                   <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Penyedia</p>
+                    <p className="text-sm font-black text-slate-900 bg-slate-100 px-2 py-1 rounded-md">{selectedSpj.penyedia}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Metode</p>
+                    <p className="text-sm font-black text-slate-900 bg-slate-100 px-2 py-1 rounded-md">{selectedSpj.metodePengadaan || 'Pengadaan Langsung'}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Regulasi</p>
+                    <p className="text-[10px] font-black text-primary bg-primary/5 px-2 py-1 rounded-md">{selectedSpj.regulasiAcuan || 'PerLKPP No. 2 Tahun 2025'}</p>
+                  </div>
+                   <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Nilai Kontrak</p>
+                    <p className="text-sm font-black text-primary bg-primary/5 px-2 py-1 rounded-md">{formatCurrency(selectedSpj.nilaiKontrak)}</p>
+                  </div>
+                   <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Progress</p>
+                    <p className="text-sm font-black text-slate-900 bg-slate-100 px-2 py-1 rounded-md">{selectedSpj.progressFisik}% Kapasitas</p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-6">
+                 <div className="flex items-center gap-3">
+                  <div className="w-1.5 h-6 bg-primary-metallic rounded-full" />
+                  <h4 className="text-lg font-black text-slate-900 uppercase">Dokumen Otomatis</h4>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[
+                    { id: 'RAB', label: 'RAB (Anggaran)', icon: FileText, desc: 'Rincian Anggaran Biaya' },
+                    { id: 'Kwitansi', label: 'Kwitansi Pembayaran', icon: Receipt, desc: 'Bukti Serah Terima Uang' },
+                    { id: 'SuratPesanan', label: 'Surat Pesanan Barang (SPB)', icon: ClipboardCheck, desc: 'Daftar Pesanan Barang' },
+                    { id: 'Kontrak', label: 'Surat Perintah Kerja (SPK)', icon: FileSignature, desc: 'Perjanjian Kerja Sama' },
+                    { id: 'Ringkasan', label: 'Ringkasan Kontrak', icon: Database, desc: 'Lampiran Rincian Teknis' },
+                    { id: 'BAST', label: 'BAST Barang', icon: Truck, desc: 'Berita Acara Serah Terima' },
+                    { id: 'LaporanSPJ', label: 'Laporan SPJ (LPJ)', icon: FileCheck, desc: 'Laporan Pertanggungjawaban' },
+                  ].map((doc, i) => (
+                    <motion.div 
+                      key={i}
+                      whileHover={{ scale: 1.02 }}
+                      className="p-5 glass-card border-slate-100 hover:border-primary/20 cursor-pointer flex items-center justify-between group"
+                    >
+                      <div 
+                        className="flex items-center gap-4 flex-grow"
+                        onClick={() => setViewingDoc(doc.id as DocumentType)}
+                      >
+                        <div className="p-3 bg-slate-50 text-slate-400 rounded-2xl group-hover:bg-primary group-hover:text-white transition-all shadow-inner">
+                          <doc.icon size={24} />
+                        </div>
+                        <div>
+                          <h5 className="text-sm font-black text-slate-900 group-hover:text-primary transition-colors">{doc.label}</h5>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase">{doc.desc}</p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setViewingDoc(doc.id as DocumentType);
+                          setTimeout(() => window.print(), 100);
+                        }}
+                        className="p-2 text-slate-300 hover:text-primary transition-colors hover:bg-primary/5 rounded-lg"
+                        title="Langsung Cetak"
+                      >
+                        <Printer size={18} />
+                      </button>
+                    </motion.div>
+                  ))}
+                </div>
+              </section>
+
+              <div className="p-8 bg-primary rounded-3xl text-white relative overflow-hidden shadow-2xl">
+                <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20" />
+                <div className="relative z-10 flex items-center justify-between">
+                  <div>
+                    <h4 className="text-lg font-black italic">Batch Print SPJ</h4>
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Export Semua Dokumen Ke PDF/Printer</p>
+                  </div>
+                  <button onClick={() => window.print()} className="px-6 py-3 bg-white text-primary rounded-2xl text-xs font-black uppercase tracking-widest hover:scale-105 transition-all shadow-xl">
+                    Jalankan Sekarang
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Document Content Modal */}
+      <AnimatePresence>
+        {viewingDoc && selectedSpj && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-white p-12 md:p-16 w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 rounded-sm relative selection:bg-primary selection:text-white"
+            >
+              <div className="absolute top-8 right-8 flex gap-3 print:hidden">
+                <button onClick={() => window.print()} className="p-3 bg-primary text-white rounded-xl shadow-lg hover:opacity-90 transition-all">
+                  <Printer size={20} />
+                </button>
+                <button onClick={() => setViewingDoc(null)} className="p-3 bg-slate-100 text-slate-500 rounded-xl hover:bg-slate-200 transition-all">
+                  <X size={20} />
+                </button>
+              </div>
+
+              {/* Formal Header */}
+              <div className="flex flex-col items-center border-b-4 border-slate-900 pb-6 mb-8 uppercase text-center relative">
+                <div className="absolute left-0 top-0 w-20 h-20">
+                  {agencyInfo.logo ? (
+                    <img src={agencyInfo.logo} alt="Logo" className="w-full h-full object-contain" />
+                  ) : (
+                    <div className="w-full h-full bg-slate-100 rounded-lg flex items-center justify-center font-bold text-slate-300 text-[8px] border border-slate-200">KOP</div>
+                  )}
+                </div>
+                <h3 className="text-sm font-black tracking-widest">Pemerintah Provinsi Kalimantan Tengah</h3>
+                <h2 className="text-2xl font-black leading-tight tracking-tighter">{agencyInfo.name}</h2>
+                <p className="text-[10px] font-bold text-slate-500 mt-1 normal-case italic">{agencyInfo.address}</p>
+                <div className="absolute right-0 top-0 text-right opacity-20 print:opacity-100">
+                  <div className="p-2 border-2 border-slate-900 rounded-lg">
+                    <div className="w-12 h-12 bg-slate-900" />
+                    <p className="text-[6px] font-black mt-1 uppercase">Verify SPJ-QR</p>
+                  </div>
+                </div>
+              </div>              {/* Render dynamic content based on type */}
+              {viewingDoc === 'Kwitansi' && (
+                <div className="space-y-10">
+                  <div className="text-center relative">
+                    <div className="absolute top-0 right-0 border-2 border-slate-900 px-4 py-2 font-black text-xs uppercase tracking-widest">
+                      Lampiran : II <br />
+                      Nomor : {selectedSpj.nomorBerkas || '...'}
+                    </div>
+                    <h1 className="text-2xl font-black uppercase underline underline-offset-4 decoration-2">KUITANSI PEMBAYARAN</h1>
+                    <p className="text-sm font-bold text-slate-500 mt-2">ID Transaksi: {selectedSpj.id.toUpperCase()}</p>
+                  </div>
+
+                  <div className="space-y-6 pt-10">
+                    <div className="grid grid-cols-4 gap-4 items-start border-b border-slate-200 pb-3">
+                      <span className="text-[10px] font-black uppercase text-slate-400">Sudah Terima Dari</span>
+                      <div className="col-span-3 text-sm font-black">: BENDAHARA PENGELUARAN {agencyInfo.name.toUpperCase()}</div>
+                    </div>
+                    <div className="grid grid-cols-4 gap-4 items-start border-b border-slate-200 pb-3">
+                      <span className="text-[10px] font-black uppercase text-slate-400">Uang Sejumlah</span>
+                      <div className="col-span-3">
+                        <div className="text-sm font-black italic bg-slate-100 p-4 rounded-xl mb-2">
+                          # {new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(selectedSpj.nilaiKontrak)} #
+                        </div>
+                        <p className="text-[10px] font-black italic text-slate-500 uppercase">Terbilang: {terbilang(selectedSpj.nilaiKontrak)} Rupiah</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-4 gap-4 items-start border-b border-slate-200 pb-3">
+                      <span className="text-[10px] font-black uppercase text-slate-400">Untuk Pembayaran</span>
+                      <div className="col-span-3 text-sm font-bold leading-relaxed">: {selectedSpj.namaPaket} dengan rincian belanja terlampir sesuai Surat Pesanan Barang (SPB) Nomor: {selectedSpj.nomorBerkas} Tanggal {formatDate(selectedSpj.tanggalMulai)}</div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-8 mt-12 bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                    <div>
+                      <h4 className="text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest">Identitas Penerima (Pihak Kedua)</h4>
+                      <div className="space-y-2 text-xs font-bold">
+                        <p className="flex justify-between"><span>Penyedia:</span> <span className="text-slate-900">{selectedSpj.penyedia}</span></p>
+                        <p className="flex justify-between"><span>NPWP:</span> <span className="text-slate-900">{selectedSpj.npwpPenyedia || '-'}</span></p>
+                        <p className="flex justify-between"><span>Bank:</span> <span className="text-slate-900">{selectedSpj.bankPenyedia || '-'}</span></p>
+                        <p className="flex justify-between"><span>Rekening:</span> <span className="text-slate-900">{selectedSpj.rekeningPenyedia || '-'}</span></p>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest">Pejabat Berwenang (Pihak Kesatu)</h4>
+                      <div className="space-y-2 text-xs font-bold">
+                        <p className="flex justify-between"><span>PPTK/PPK:</span> <span className="text-slate-900">{selectedSpj.pic}</span></p>
+                        <p className="flex justify-between"><span>NIP:</span> <span className="text-slate-900">{selectedSpj.nipPic || '-'}</span></p>
+                        <p className="flex justify-between"><span>Jabatan:</span> <span className="text-slate-900">{selectedSpj.jabatanPic || '-'}</span></p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-8 mt-24 text-center">
+                    <div className="flex flex-col justify-between h-48">
+                      <p className="text-[10px] font-black uppercase text-slate-400 leading-tight">Mengetahui/Menyetujui,<br />Kuasa Pengguna Anggaran</p>
+                      <div>
+                        <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-4">H. NURUL ANWAR, SH., M.AP</p>
+                        <p className="text-[10px] font-medium text-slate-500">NIP. 19710520 199203 1 005</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col justify-between h-48">
+                      <p className="text-[10px] font-black uppercase text-slate-400 leading-tight">Telah Dibayar Lunas,<br />Bendahara Pengeluaran</p>
+                      <div>
+                        <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-4">SEPTYANAWATI, SE</p>
+                        <p className="text-[10px] font-medium text-slate-500">NIP. 19820925 201001 2 018</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col justify-between h-48">
+                      <p className="text-[10px] font-black uppercase text-slate-400 leading-tight">Palangka Raya, {formatDate(new Date().toISOString())}<br />Penerima/Penyedia</p>
+                      <div>
+                        <p className="text-[8px] font-bold text-slate-300 uppercase mb-4 italic">(Meterai 10.000 & Stempel)</p>
+                        <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-4">DIREKTUR {selectedSpj.penyedia}</p>
+                        <p className="text-[10px] font-medium text-slate-500">NIP/NIK. ...........................</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {viewingDoc === 'RAB' && (
+                <div className="space-y-10">
+                  <div className="text-center space-y-1 border-b-2 border-slate-900 pb-4">
+                    <h1 className="text-xl font-black uppercase underline underline-offset-4 decoration-2">RENCANA ANGGARAN BIAYA (RAB)</h1>
+                    <div className="grid grid-cols-1 gap-1 text-[11px] font-bold mt-4 max-w-2xl mx-auto">
+                      <div className="flex justify-between border-b border-slate-100">
+                        <span className="text-slate-400 uppercase">Pemerintah / Instansi</span>
+                        <span className="text-slate-900 uppercase">{agencyInfo.name}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100">
+                        <span className="text-slate-400 uppercase">Nama Kegiatan / Paket</span>
+                        <span className="text-slate-900 uppercase">{selectedSpj.namaPaket}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100">
+                        <span className="text-slate-400 uppercase">Lokasi Pekerjaan</span>
+                        <span className="text-slate-900">{agencyInfo.address}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100">
+                        <span className="text-slate-400 uppercase">Tahun Anggaran</span>
+                        <span className="text-slate-900">{new Date(selectedSpj.tanggalMulai).getFullYear()}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-2 border-slate-900">
+                    <table className="w-full text-[10px] font-bold border-collapse">
+                      <thead className="bg-slate-100 border-b-2 border-slate-900">
+                        <tr className="uppercase">
+                          <th className="p-2 border-r border-slate-900 w-10 text-center">No</th>
+                          <th className="p-2 border-r border-slate-900 text-left w-32">Kode Rekening</th>
+                          <th className="p-2 border-r border-slate-900 text-left">Uraian (Rincian Bahan/Jasa)</th>
+                          <th className="p-2 border-r border-slate-900 w-16 text-center">Vol</th>
+                          <th className="p-2 border-r border-slate-900 w-20 text-center">Satuan</th>
+                          <th className="p-2 border-r border-slate-900 text-right w-28">Harga Satuan</th>
+                          <th className="p-2 text-right w-32">Jumlah Total</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-300">
+                        {selectedSpj.rekapBelanja && selectedSpj.rekapBelanja.length > 0 ? (
+                          selectedSpj.rekapBelanja.map((item, idx) => (
+                            <tr key={item.id}>
+                              <td className="p-2 border-r border-slate-900 text-center">{idx + 1}</td>
+                              <td className="p-2 border-r border-slate-900 font-mono text-[9px] text-slate-500">5.2.02.01.00XX</td>
+                              <td className="p-2 border-r border-slate-900 uppercase text-slate-900">{item.uraian}</td>
+                              <td className="p-2 border-r border-slate-900 text-center">{item.volume}</td>
+                              <td className="p-2 border-r border-slate-900 text-center uppercase">{item.satuan}</td>
+                              <td className="p-2 border-r border-slate-900 text-right font-mono">{formatCurrency(item.hargaSatuan)}</td>
+                              <td className="p-2 text-right font-black font-mono">{formatCurrency(item.volume * item.hargaSatuan)}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td className="p-2 border-r border-slate-900 text-center">1</td>
+                            <td className="p-2 border-r border-slate-900 font-mono text-[9px] text-slate-500">5.2.02.01.00XX</td>
+                            <td className="p-2 border-r border-slate-900 uppercase text-slate-900">{selectedSpj.namaPaket}</td>
+                            <td className="p-2 border-r border-slate-900 text-center">1</td>
+                            <td className="p-2 border-r border-slate-900 text-center uppercase">Paket</td>
+                            <td className="p-2 border-r border-slate-900 text-right font-mono">{formatCurrency(selectedSpj.nilaiKontrak)}</td>
+                            <td className="p-2 text-right font-black font-mono">{formatCurrency(selectedSpj.nilaiKontrak)}</td>
+                          </tr>
+                        )}
+                      </tbody>
+                      <tfoot className="bg-slate-50 border-t-2 border-slate-900 font-black uppercase text-xs">
+                        <tr>
+                          <td colSpan={6} className="p-3 text-right border-r border-slate-900">Total Akhir Pajak (PPN 11%)</td>
+                          <td className="p-3 text-right bg-slate-100">{formatCurrency(selectedSpj.nilaiKontrak)}</td>
+                        </tr>
+                        <tr>
+                          <td colSpan={7} className="p-2 lowercase italic text-slate-400 font-medium text-right normal-case tracking-tight">Terbilang: {terbilang(selectedSpj.nilaiKontrak)} Rupiah</td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-20 mt-16 text-center font-bold">
+                    <div className="flex flex-col justify-between h-44">
+                      <div className="space-y-1">
+                        <p className="text-[10px] uppercase">Mengetahui/Menyetujui,</p>
+                        <p className="text-[11px] uppercase">KEPALA INSTANSI / PENGGUNA ANGGARAN</p>
+                      </div>
+                      <div className="border-t-2 border-slate-900 pt-2 mx-8">
+                        <p className="text-xs uppercase italic opacity-20">......................................................</p>
+                        <p className="text-[9px] text-slate-500 font-medium tracking-tighter">NIP. ......................................................</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col justify-between h-44">
+                      <div className="space-y-1">
+                        <p className="text-[10px] uppercase">Palangka Raya, {formatDate(new Date().toISOString())}</p>
+                        <p className="text-[11px] uppercase">PELAKSANA KEGIATAN / PPTK</p>
+                      </div>
+                      <div className="border-t-2 border-slate-900 pt-2 mx-8">
+                        <p className="text-xs uppercase">{selectedSpj.pic}</p>
+                        <p className="text-[9px] text-slate-500 font-medium tracking-tighter">NIP. {selectedSpj.nipPic || '......................................................'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {viewingDoc === 'SuratPesanan' && (
+                <div className="space-y-12">
+                  <div className="text-center">
+                    <h1 className="text-2xl font-black uppercase underline underline-offset-4 decoration-2">SURAT PESANAN BARANG (SPB)</h1>
+                    <p className="text-sm font-bold text-slate-600 mt-2">NOMOR: {selectedSpj.nomorBerkas || '.../SPB/PPTK/2026'}</p>
+                    <p className="text-[10px] font-black text-slate-400 mt-1 uppercase tracking-widest italic">{selectedSpj.regulasiAcuan}</p>
+                  </div>
+
+                  <div className="space-y-8 text-[13px] leading-loose text-justify font-medium">
+                    <p>
+                      Yang bertanda tangan di bawah ini Pejabat Pelaksana Teknis Kegiatan (PPTK) pada <b className="text-slate-900">{agencyInfo.name.toUpperCase()}</b>, selanjutnya disebut sebagai <b className="text-slate-900">Pemesan</b>, memberikan pesanan kepada:
+                    </p>
+
+                    <div className="bg-white border-2 border-slate-900 p-8 space-y-4 shadow-sm">
+                      <div className="grid grid-cols-3 gap-6 items-start border-b border-slate-100 pb-2">
+                        <span className="font-black text-slate-400 uppercase text-[10px] tracking-widest">Penyedia</span>
+                        <div className="col-span-2 font-black text-slate-900">: &nbsp; {selectedSpj.penyedia?.toUpperCase()}</div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-6 items-start border-b border-slate-100 pb-2">
+                        <span className="font-black text-slate-400 uppercase text-[10px] tracking-widest">NPWP</span>
+                        <div className="col-span-2 font-black text-slate-900">: &nbsp; {selectedSpj.npwpPenyedia || '-'}</div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-6 items-start border-b border-slate-100 pb-2">
+                        <span className="font-black text-slate-400 uppercase text-[10px] tracking-widest">Alamat</span>
+                        <div className="col-span-2 font-bold text-slate-900">: &nbsp; Sesuai Profil Perusahaan yang Terdaftar</div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-6 items-start pb-2">
+                        <span className="font-black text-slate-400 uppercase text-[10px] tracking-widest">Nilai Kontrak</span>
+                        <div className="col-span-2">
+                          <div className="font-black text-primary text-base">: &nbsp; {formatCurrency(selectedSpj.nilaiKontrak)}</div>
+                          <p className="text-[10px] font-black italic text-slate-500 ml-4">Terbilang: {terbilang(selectedSpj.nilaiKontrak)} Rupiah</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <p>
+                      Untuk melaksanakan pekerjaan <b className="text-slate-900 uppercase">"{selectedSpj.namaPaket}"</b> dengan rincian sebagaimana tertera dalam lampiran Rincian Anggaran Biaya (RAB). Pekerjaan tersebut wajib diselesaikan dan diserahkan dalam keadaan baik dan lengkap selambat-lambatnya pada tanggal <b className="text-slate-900 font-black">{formatDate(selectedSpj.tanggalSelesai)}</b>.
+                    </p>
+
+                    <div className="space-y-4 mt-6">
+                      <h4 className="font-black text-sm uppercase underline decoration-2">Syarat dan Ketentuan:</h4>
+                      <ol className="list-decimal pl-5 space-y-2 text-xs">
+                        <li><b>Jangka Waktu Pelaksanaan:</b> Sesuai dengan yang tertera di atas.</li>
+                        <li><b>Sanksi Keterlambatan:</b> Terlambat menyerahkan hasil pekerjaan dikenakan denda sekurang-kurangnya 1/1000 (satu perseribu) dari nilai kontrak atau bagian kontrak untuk setiap hari keterlambatan.</li>
+                        <li><b>Pemeriksaan dan Pengujian:</b> Pemesan berhak melakukan pemeriksaan dan pengujian atas hasil pekerjaan yang dilakukan oleh Penyedia.</li>
+                        <li><b>Pembayaran:</b> Dilakukan setelah pekerjaan selesai 100% dan dokumen penagihan dinyatakan lengkap.</li>
+                        <li><b>Perubahan SPB:</b> Perubahan atas Surat Pesanan Barang (SPB) ini hanya dapat dilakukan melalui Addendum SPB yang disetujui kedua belah pihak.</li>
+                      </ol>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-20 mt-20 text-center">
+                    <div className="flex flex-col justify-between h-48 group">
+                      <p className="text-[10px] font-black uppercase text-slate-400 leading-tight">Menerima Pesanan,<br /><b className="text-slate-600">{selectedSpj.penyedia}</b></p>
+                      <div>
+                        <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-4">DIREKTUR PENYEDIA</p>
+                        <p className="text-[10px] font-medium text-slate-500 italic">Materai & Stempel Basah</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col justify-between h-48">
+                      <p className="text-[10px] font-black uppercase text-slate-400 leading-tight">Palangka Raya, {formatDate(new Date().toISOString())}<br />Pejabat Pelaksana Teknis Kegiatan (PPTK)</p>
+                      <div>
+                        <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-4">{selectedSpj.pic}</p>
+                        <p className="text-[10px] font-medium text-slate-500">NIP. {selectedSpj.nipPic || '...........................'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}              {viewingDoc === 'Kontrak' && (
+                <div className="space-y-10">
+                  <div className="text-center font-serif">
+                    <h1 className="text-2xl font-black uppercase underline underline-offset-4 decoration-2">SURAT PERINTAH KERJA (SPK)</h1>
+                    <p className="text-sm font-bold mt-2">Nomor: {selectedSpj.nomorKontrak || selectedSpj.nomorBerkas || '.../SPK/2026'}</p>
+                    <p className="text-sm font-black uppercase mt-1">Paket Pekerjaan: {selectedSpj.namaPaket}</p>
+                  </div>
+
+                  <div className="space-y-6 text-[12px] leading-relaxed text-justify font-medium">
+                    <section>
+                      <h4 className="font-black text-sm uppercase underline decoration-2 mb-4">I. IDENTITAS PARA PIHAK</h4>
+                      <div className="space-y-4">
+                        <div className="pl-4 border-l-4 border-slate-900">
+                          <p className="font-black uppercase text-[10px] text-slate-400 mb-1">PIHAK PERTAMA (Pengguna Jasa/PPK)</p>
+                          <div className="grid grid-cols-4 gap-1">
+                            <span className="font-bold">Nama</span><div className="col-span-3">: <b className="text-slate-900 uppercase">{selectedSpj.pic}</b></div>
+                            <span className="font-bold">Jabatan</span><div className="col-span-3">: {selectedSpj.jabatanPic || 'Pejabat Pembuat Komitmen (PPK)'}</div>
+                            <span className="font-bold">Instansi</span><div className="col-span-3">: <b className="text-slate-900 uppercase">{agencyInfo.name}</b></div>
+                            <span className="font-bold">Alamat</span><div className="col-span-3">: {agencyInfo.address}</div>
+                          </div>
+                        </div>
+                        <div className="pl-4 border-l-4 border-slate-300">
+                          <p className="font-black uppercase text-[10px] text-slate-400 mb-1">PIHAK KEDUA (Penyedia Jasa)</p>
+                          <div className="grid grid-cols-4 gap-1">
+                            <span className="font-bold">Nama</span><div className="col-span-3">: <b className="text-slate-900 uppercase">DIREKTUR / PIMPINAN PERUSAHAAN</b></div>
+                            <span className="font-bold">Perusahaan</span><div className="col-span-3">: <b className="text-slate-900 uppercase">{selectedSpj.penyedia}</b></div>
+                            <span className="font-bold">NPWP</span><div className="col-span-3">: {selectedSpj.npwpPenyedia || '-'}</div>
+                            <span className="font-bold">Alamat</span><div className="col-span-3">: Alamat Sesuai Domisili Perusahaan yang Terdaftar</div>
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section className="space-y-4">
+                      <h4 className="font-black text-sm uppercase underline decoration-2">II. ISI SURAT PERJANJIAN</h4>
+                      <div className="space-y-4 ml-2">
+                        <div>
+                          <p className="font-black uppercase text-[10px] text-slate-500 mb-1">1. Dasar Pekerjaan</p>
+                          <p>Berdasarkan {selectedSpj.regulasiAcuan || 'Peraturan Pengadaan Barang/Jasa Pemerintah'} dan Dokumen Penawaran/Negosiasi Nomor {selectedSpj.nomorBerkas || '....'} tanggal {formatDate(selectedSpj.tanggalMulai)}.</p>
+                        </div>
+                        <div>
+                          <p className="font-black uppercase text-[10px] text-slate-500 mb-1">2. Lingkup Pekerjaan</p>
+                          <p>Penyelesaian pekerjaan <b className="text-slate-900">{selectedSpj.namaPaket}</b> meliputi pengadaan barang/jasa yang spesifikasi dan volumenya tercantum dalam Rincian Anggaran Biaya (RAB) yang merupakan bagian tidak terpisahkan dari SPK ini.</p>
+                        </div>
+                        <div>
+                          <p className="font-black uppercase text-[10px] text-slate-500 mb-1">3. Nilai SPK</p>
+                          <p>Nilai Kontrak sebesar <b className="text-slate-900">{formatCurrency(selectedSpj.nilaiKontrak)}</b> (<b className="italic">{terbilang(selectedSpj.nilaiKontrak)} Rupiah</b>), sudah termasuk Pajak Pertambahan Nilai (PPN) 11%.</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <p className="font-black uppercase text-[10px] text-slate-500 mb-1">4. Waktu Pelaksanaan</p>
+                            <p className="font-black">{(new Date(selectedSpj.tanggalSelesai).getTime() - new Date(selectedSpj.tanggalMulai).getTime()) / (1000 * 3600 * 24) || '...'} Hari Kalender</p>
+                          </div>
+                          <div>
+                            <p className="font-black uppercase text-[10px] text-slate-500 mb-1">5. Masa Pemeliharaan</p>
+                            <p>30 (Tiga Puluh) Hari Kalender sejak BAST Pertama</p>
+                          </div>
+                        </div>
+                        <div>
+                          <p className="font-black uppercase text-[10px] text-slate-500 mb-1">6. Hak dan Kewajiban</p>
+                          <ul className="list-disc pl-5 space-y-1">
+                            <li>PIHAK KEDUA wajib melaksanakan pekerjaan secara profesional sesuai spesifikasi teknis.</li>
+                            <li>PIHAK PERTAMA berhak melakukan pemeriksaan dan pengawasan atas pelaksanaan pekerjaan.</li>
+                            <li>Pembayaran dilakukan setelah PIHAK KEDUA menyerahkan seluruh dokumen penagihan yang sah dan BAST disetujui.</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </section>
+
+                    <p className="font-bold italic text-slate-500 border-t border-slate-100 pt-4 mt-8">
+                      Dibuat pada tanggal: {formatDate(new Date().toISOString())}. Surat Perintah Kerja ini mengikat dan memiliki instruksi kerja spesifik yang harus ditaati oleh kedua belah pihak.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-20 mt-20 text-center font-bold">
+                    <div className="flex flex-col justify-between h-48">
+                      <p className="text-[10px] uppercase">PIHAK KEDUA (Penyedia),</p>
+                      <div className="border-t-2 border-slate-900 pt-2 mx-6 relative">
+                         <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-10 border border-slate-900 p-1 text-[8px] italic whitespace-nowrap">MATERAI 10.000</div>
+                         <p className="text-xs uppercase">DIREKTUR {selectedSpj.penyedia}</p>
+                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter italic">Penyedia Jasa</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col justify-between h-48">
+                      <p className="text-[10px] uppercase">PIHAK PERTAMA (PPK),</p>
+                      <div className="border-t-2 border-slate-900 pt-2 mx-6">
+                         <p className="text-xs uppercase">{selectedSpj.pic}</p>
+                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter">NIP. {selectedSpj.nipPic || '...........................'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {viewingDoc === 'Ringkasan' && (
+                <div className="space-y-10">
+                  <div className="text-center">
+                    <h1 className="text-2xl font-black uppercase underline underline-offset-4 decoration-4 tracking-tighter">RINGKASAN KONTRAK / DATA TRANSAKSI</h1>
+                    <p className="text-xs font-bold text-slate-500 mt-2 uppercase tracking-widest">BUKTI PENDUKUNG PERTANGGUNGJAWABAN KEUANGAN DIGITAL</p>
+                  </div>
+
+                  <div className="space-y-8 text-[12px] font-medium leading-relaxed">
+                    <section>
+                      <h4 className="font-black text-sm uppercase bg-slate-900 text-white px-4 py-1 mb-4 inline-block">I. DATA UMUM KONTRAK / SPK</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <p className="flex justify-between border-b border-slate-100 pb-1"><span className="text-slate-400">Nomor Kontrak/SPK</span> <b className="text-slate-900">{selectedSpj.nomorKontrak || selectedSpj.nomorBerkas || '-'}</b></p>
+                          <p className="flex justify-between border-b border-slate-100 pb-1"><span className="text-slate-400">Tanggal Kontrak</span> <b className="text-slate-900">{formatDate(selectedSpj.tanggalMulai)}</b></p>
+                          <p className="flex justify-between border-b border-slate-100 pb-1"><span className="text-slate-400">Nomor & Tgl Addendum</span> <b className="text-slate-900 italic font-bold text-slate-400">TIDAK ADA</b></p>
+                        </div>
+                        <div className="space-y-2">
+                          <p className="flex justify-between border-b border-slate-100 pb-1"><span className="text-slate-400">Nomor & Tgl SPPBJ</span> <b className="text-slate-900">.../.../SPPBJ/2026</b></p>
+                          <p className="flex justify-between border-b border-slate-100 pb-1"><span className="text-slate-400">Nomor & Tgl SPMK</span> <b className="text-slate-900">.../.../SPMK/2026</b></p>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section>
+                      <h4 className="font-black text-sm uppercase bg-slate-900 text-white px-4 py-1 mb-4 inline-block">II. DATA PARA PIHAK</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="bg-slate-50 p-4 rounded-2xl">
+                          <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Pihak Pertama (PPK)</p>
+                          <p className="font-black uppercase text-slate-900">{selectedSpj.pic}</p>
+                          <p className="text-slate-500">{selectedSpj.jabatanPic || 'Pejabat Pembuat Komitmen'}</p>
+                          <p className="text-slate-500 font-bold">NIP. {selectedSpj.nipPic || '-'}</p>
+                          <p className="text-slate-500 uppercase text-[10px] mt-1">{agencyInfo.name}</p>
+                        </div>
+                        <div className="bg-slate-50 p-4 rounded-2xl">
+                          <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Pihak Kedua (Penyedia)</p>
+                          <p className="font-black uppercase text-slate-900">{selectedSpj.penyedia}</p>
+                          <p className="text-slate-500">Pimpinan / Direktur Perusahaan</p>
+                          <p className="text-slate-500">NPWP: {selectedSpj.npwpPenyedia || '-'}</p>
+                          <p className="text-slate-500 italic text-[10px] mt-1 line-clamp-1">Alamat Sesuai Domisili Terdaftar</p>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section>
+                      <h4 className="font-black text-sm uppercase bg-slate-900 text-white px-4 py-1 mb-4 inline-block">III. DATA PEKERJAAN & LINGKUP</h4>
+                      <div className="bg-slate-100 p-6 rounded-3xl space-y-4">
+                        <div className="grid grid-cols-4 gap-4">
+                          <span className="text-slate-400 font-bold uppercase text-[10px]">Nama Paket</span>
+                          <div className="col-span-3 text-sm font-black uppercase text-slate-900">{selectedSpj.namaPaket}</div>
+                        </div>
+                        <div className="grid grid-cols-4 gap-4">
+                          <span className="text-slate-400 font-bold uppercase text-[10px]">Lokasi</span>
+                          <div className="col-span-3">Dinas / Lokasi Sesuai Instruksi Kerja</div>
+                        </div>
+                        <div className="grid grid-cols-4 gap-4">
+                          <span className="text-slate-400 font-bold uppercase text-[10px]">Lingkup</span>
+                          <div className="col-span-3 text-slate-600">Pengadaan Barang/Jasa sesuai dengan rincian teknis yang tertuang dalam dokumen RAB dan SPK.</div>
+                        </div>
+                        <div className="grid grid-cols-4 gap-4">
+                          <span className="text-slate-400 font-bold uppercase text-[10px]">Waktu</span>
+                          <div className="col-span-3 font-black">{(new Date(selectedSpj.tanggalSelesai).getTime() - new Date(selectedSpj.tanggalMulai).getTime()) / (1000 * 3600 * 24) || '...'} Hari Kalender</div>
+                        </div>
+                      </div>
+                    </section>
+
+                    <section>
+                      <h4 className="font-black text-sm uppercase bg-slate-900 text-white px-4 py-1 mb-4 inline-block">IV. DATA NILAI & PEMBAYARAN</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-2">
+                        <p className="flex justify-between border-b border-slate-100 pb-1"><span className="text-slate-400">Nilai Kontrak (Inc. PPN 11%)</span> <b className="text-slate-900 text-sm">{formatCurrency(selectedSpj.nilaiKontrak)}</b></p>
+                        <p className="flex justify-between border-b border-slate-100 pb-1"><span className="text-slate-400">Sumber Dana</span> <b className="text-slate-900">APBD PROVINSI</b></p>
+                        <p className="flex justify-between border-b border-slate-100 pb-1"><span className="text-slate-400">Kode Rekening / DPA</span> <b className="text-slate-900">.../.../DPA/2026</b></p>
+                        <p className="flex justify-between border-b border-slate-100 pb-1"><span className="text-slate-400">Cara Pembayaran</span> <b className="text-slate-900">Lumpsum (LS)</b></p>
+                      </div>
+                    </section>
+
+                    <section>
+                      <h4 className="font-black text-sm uppercase bg-slate-900 text-white px-4 py-1 mb-4 inline-block">V. KETENTUAN KHUSUS (UPDATED)</h4>
+                      <div className="space-y-3">
+                        <div className="p-4 border-2 border-slate-100 rounded-2xl flex items-start gap-4">
+                          <ShieldCheck className="text-indigo-500 shrink-0" size={20} />
+                          <div>
+                            <p className="font-black text-[11px] mb-1">Sanksi / Denda Keterlambatan</p>
+                            <p className="text-[10px] text-slate-500">1/1000 (satu permil) dari total Nilai Kontrak untuk setiap hari keterlambatan pelaksanaan pekerjaan.</p>
+                          </div>
+                        </div>
+                        <div className="p-4 border-2 border-slate-100 rounded-2xl flex items-start gap-4">
+                          <CheckCircle2 className="text-emerald-500 shrink-0" size={20} />
+                          <div>
+                            <p className="font-black text-[11px] mb-1">Jaminan & E-Purchasing</p>
+                            <p className="text-[10px] text-slate-500">
+                             {selectedSpj.metodePengadaan === 'E-purchasing' 
+                               ? `Melalui Katalog Elektronik Pemerintah. Tautan ID Paket: https://e-katalog.lkpp.go.id/id/paket/${selectedSpj.id.slice(0,8)}` 
+                               : "Masa Pemeliharaan selama 30 Hari Kalender setelah Serah Terima Pertama (BAST) Pekerjaan."}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </div>
+              )}
+
+              {viewingDoc === 'LaporanSPJ' && (
+                <LaporanRealisasi agencyInfo={agencyInfo} packet={selectedSpj} />
+              )}
+
+              {viewingDoc === 'BAST' && (
+                <div className="space-y-10">
+                  <div className="text-center font-serif">
+                    <h1 className="text-xl font-black uppercase underline underline-offset-4 decoration-2">BERITA ACARA SERAH TERIMA BARANG</h1>
+                    <p className="text-sm font-bold mt-2">Nomor: {selectedSpj.nomorBerkas || '.../BAST/.../2026'}</p>
+                  </div>
+
+                  <div className="space-y-6 text-[13px] leading-relaxed text-justify font-medium">
+                    <p>
+                      Pada hari ini, <b className="text-slate-900">{new Intl.DateTimeFormat('id-ID', { weekday: 'long' }).format(new Date())}</b>, 
+                      tanggal <b className="text-slate-900">{new Date().getDate()}</b> bulan <b className="text-slate-900">{new Intl.DateTimeFormat('id-ID', { month: 'long' }).format(new Date())}</b> 
+                      tahun <b className="text-slate-900 font-bold">{new Date().getFullYear()}</b>, kami yang bertanda tangan di bawah ini:
+                    </p>
+                    
+                    <div className="space-y-4 pl-4 border-l-2 border-slate-200">
+                      <div className="grid grid-cols-4 gap-2">
+                        <span className="font-bold text-slate-500 uppercase text-[10px]">Nama</span>
+                        <div className="col-span-3">: <b className="text-slate-900 uppercase">DIREKTUR PERUSAHAAN / PIMPINAN</b></div>
+                        <span className="font-bold text-slate-500 uppercase text-[10px]">Jabatan</span>
+                        <div className="col-span-3">: DIREKTUR / PIMPINAN</div>
+                        <span className="font-bold text-slate-500 uppercase text-[10px]">Alamat/Instansi</span>
+                        <div className="col-span-3">: <b className="text-slate-900">{selectedSpj.penyedia}</b></div>
+                      </div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Selanjutnya disebut PIHAK PERTAMA (yang menyerahkan).</p>
+                    </div>
+
+                    <div className="space-y-4 pl-4 border-l-2 border-slate-200">
+                      <div className="grid grid-cols-4 gap-2">
+                        <span className="font-bold text-slate-500 uppercase text-[10px]">Nama</span>
+                        <div className="col-span-3">: <b className="text-slate-900 uppercase">{selectedSpj.pic}</b></div>
+                        <span className="font-bold text-slate-500 uppercase text-[10px]">Jabatan</span>
+                        <div className="col-span-3">: {selectedSpj.jabatanPic || 'Pejabat Pelaksana Teknis Kegiatan (PPTK)'}</div>
+                        <span className="font-bold text-slate-500 uppercase text-[10px]">Alamat/Instansi</span>
+                        <div className="col-span-3">: <b className="text-slate-900 uppercase">{agencyInfo.name}</b></div>
+                      </div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Selanjutnya disebut PIHAK KEDUA (yang menerima).</p>
+                    </div>
+
+                    <p>
+                      PIHAK PERTAMA menyerahkan barang kepada PIHAK KEDUA, dan PIHAK KEDUA telah menerima barang dari PIHAK PERTAMA dalam keadaan baik dan jumlah yang sesuai, dengan rincian sebagai berikut:
+                    </p>
+                    
+                    <div className="border border-slate-900">
+                      <table className="w-full text-[11px] font-bold border-collapse">
+                        <thead className="bg-slate-50 uppercase border-b border-slate-900">
+                          <tr className="text-center">
+                            <th className="p-2 border-r border-slate-900 w-10">No</th>
+                            <th className="p-2 border-r border-slate-900 text-left">Nama Barang</th>
+                            <th className="p-2 border-r border-slate-900">Kode/Seri</th>
+                            <th className="p-2 border-r border-slate-900 w-16">Jumlah</th>
+                            <th className="p-2 border-r border-slate-900 w-20">Satuan</th>
+                            <th className="p-2">Keterangan</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-300">
+                          {selectedSpj.rekapBelanja && selectedSpj.rekapBelanja.length > 0 ? (
+                            selectedSpj.rekapBelanja.map((item, idx) => (
+                              <tr key={item.id}>
+                                <td className="p-2 border-r border-slate-900 text-center">{idx + 1}</td>
+                                <td className="p-2 border-r border-slate-900 uppercase">{item.uraian}</td>
+                                <td className="p-2 border-r border-slate-900 text-center">-</td>
+                                <td className="p-2 border-r border-slate-900 text-center">{item.volume}</td>
+                                <td className="p-2 border-r border-slate-900 text-center uppercase">{item.satuan}</td>
+                                <td className="p-2 text-center text-green-600">BAIK</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td className="p-2 border-r border-slate-900 text-center">1</td>
+                              <td className="p-2 border-r border-slate-900 uppercase">{selectedSpj.namaPaket}</td>
+                              <td className="p-2 border-r border-slate-900 text-center">-</td>
+                              <td className="p-2 border-r border-slate-900 text-center">1</td>
+                              <td className="p-2 border-r border-slate-900 text-center uppercase">Paket</td>
+                              <td className="p-2 text-center text-green-600">BAIK</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <p>
+                      Barang-barang tersebut selanjutnya menjadi tanggung jawab PIHAK KEDUA untuk digunakan sebagaimana mestinya. 
+                      Demikian Berita Acara Serah Terima ini dibuat untuk dapat dipergunakan sebagaimana mestinya.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-20 mt-20 text-center font-bold">
+                    <div className="flex flex-col justify-between h-48">
+                      <p className="text-[10px] uppercase">PIHAK KEDUA (Penerima),</p>
+                      <div className="border-t-2 border-slate-900 pt-2 mx-6">
+                         <p className="text-xs uppercase">{selectedSpj.pic}</p>
+                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter">NIP. {selectedSpj.nipPic || '...........................'}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col justify-between h-48">
+                      <p className="text-[10px] uppercase">PIHAK PERTAMA (Penyerah),</p>
+                      <div className="border-t-2 border-slate-900 pt-2 mx-6 relative">
+                         <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-10 border border-slate-900 p-1 text-[8px] italic whitespace-nowrap">MATERAI 10.000</div>
+                         <p className="text-xs uppercase">DIREKTUR {selectedSpj.penyedia}</p>
+                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter italic">PIMPINAN PERUSAHAAN</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="mt-20 pt-6 border-t border-slate-100 text-[10px] font-black text-slate-300 uppercase tracking-widest flex justify-between">
+                <span>Verified by SPJ Digital Blockchain v2.0</span>
+                <span>ID: {selectedSpj.id}-{viewingDoc}</span>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

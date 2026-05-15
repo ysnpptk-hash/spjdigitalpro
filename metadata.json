@@ -1,0 +1,8 @@
+{
+  "name": "Remix: SPJ Digital Ultimate",
+  "description": "Sistem Informasi Pertanggungjawaban Keuangan Profesional untuk Instansi. Dashboard realisasi, database paket, kalkulator pajak, dan pengelolaan dokumen SPJ.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,142 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-primary: #3b0764; /* Deep Purple */
+  --color-primary-metallic: #581c87; /* Brighter Purple for Gradient */
+  --color-secondary: #f8fafc; /* Grey White */
+  --color-accent: #94a3b8; /* Slate Blue */
+  --color-gold-metallic: #eab308; /* Yellow 600 for Gold */
+}
+
+@layer base {
+  body {
+    @apply bg-secondary text-slate-900 antialiased;
+  }
+}
+
+.metallic-purple {
+  background: linear-gradient(135deg, #3b0764 0%, #581c87 50%, #3b0764 100%);
+  box-shadow: 0 4px 15px rgba(59, 7, 100, 0.3);
+}
+
+.glass-card {
+  @apply bg-white/70 backdrop-blur-xl border border-white/20 rounded-2xl shadow-[0_8px_32px_0_rgba(31,38,135,0.07)];
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+  @apply shadow-[0_8px_32px_0_rgba(31,38,135,0.12)] border-white/40;
+}
+
+.glass-dark {
+  @apply bg-slate-900/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-xl;
+}
+
+.glass-purple {
+  background: linear-gradient(135deg, rgba(59, 7, 100, 0.8) 0%, rgba(88, 28, 135, 0.8) 100%);
+  @apply backdrop-blur-xl border border-white/20 rounded-2xl shadow-lg;
+}
+
+.text-gradient-purple {
+  @apply bg-clip-text text-transparent bg-gradient-to-tr from-[#3b0764] via-[#581c87] to-[#7c3aed];
+}
+
+.text-gradient-gold {
+  @apply bg-clip-text text-transparent bg-gradient-to-tr from-[#a16207] via-[#eab308] to-[#fef08a];
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 rounded-full hover:bg-slate-300 transition-colors;
+}
+
+.premium-shadow {
+  box-shadow: 0 10px 40px -10px rgba(59, 7, 100, 0.1);
+}
+
+/* Print Styles */
+@media print {
+  @page {
+    margin: 2cm;
+  }
+
+  /* Hide UI elements */
+  nav, 
+  aside, 
+  header, 
+  footer:not(.print-footer), 
+  button:not(.print-only),
+  .print-hidden,
+  .notification-container,
+  .user-menu-container {
+    display: none !important;
+  }
+
+  /* Reset main content for full width */
+  main {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+
+  /* Font spacing for documents */
+  .document-text, p, span, td, th {
+    letter-spacing: 0.01em !important;
+    word-spacing: 0.05em !important;
+    line-height: 1.6 !important;
+  }
+
+  .font-black {
+    font-weight: 900 !important;
+  }
+
+  body {
+    background: white !important;
+  }
+
+  .glass-card {
+    box-shadow: none !important;
+    border: none !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+  }
+
+  /* Ensure colors and backgrounds in tables/important elements are preserved */
+  .print-header {
+    display: block !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  th, td {
+    border: 1px solid #e2e8f0 !important;
+    padding: 8px !important;
+  }
+
+  .bg-slate-900 {
+    background-color: #0f172a !important;
+    color: white !important;
+    -webkit-print-color-adjust: exact;
+  }
+
+  input, select, textarea {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+  }
+}

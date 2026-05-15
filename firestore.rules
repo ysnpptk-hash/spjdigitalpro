@@ -1,0 +1,142 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HELPERS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Role-based access helpers
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email.lower() == "ysn.pptk@gmail.com" ||
+        (exists(/databases/$(database)/documents/authorized_users/$(request.auth.token.email.lower())) &&
+         get(/databases/$(database)/documents/authorized_users/$(request.auth.token.email.lower())).data.role in ["Super Admin", "Admin"])
+      );
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email.lower() == "ysn.pptk@gmail.com" ||
+        (exists(/databases/$(database)/documents/authorized_users/$(request.auth.token.email.lower())) &&
+         get(/databases/$(database)/documents/authorized_users/$(request.auth.token.email.lower())).data.role == "Super Admin")
+      );
+    }
+
+    // --- ENTITY VALIDATION HELPERS ---
+
+    function isValidAuthorizedUser(data) {
+      return data.keys().hasAll(['email', 'role']) &&
+             data.email is string && data.email.size() <= 100 &&
+             data.role in ["Super Admin", "Admin", "Pengguna"] &&
+             (!('name' in data) || (data.name is string && data.name.size() <= 100)) &&
+             (!('username' in data) || (data.username is string && data.username.size() <= 50)) &&
+             (!('status' in data) || (data.status in ["Aktif", "Non-Aktif"])) &&
+             (!('departemen' in data) || (data.departemen is string && data.departemen.size() <= 100));
+    }
+
+    function isValidPacket(data) {
+      return data.keys().hasAll(['namaPaket', 'paguAnggaran', 'nilaiKontrak']) &&
+             data.namaPaket is string && data.namaPaket.size() <= 500 &&
+             data.paguAnggaran is number && data.paguAnggaran >= 0 &&
+             data.nilaiKontrak is number && data.nilaiKontrak >= 0 &&
+             (!('penyedia' in data) || (data.penyedia is string && data.penyedia.size() <= 200)) &&
+             (!('statusDokumen' in data) || (data.statusDokumen in ["Draft", "Proses", "Selesai", "Revisi"]));
+    }
+
+    function isValidProgram(data) {
+      return data.keys().hasAll(['kode', 'nama', 'pagu']) &&
+             data.kode is string && data.kode.size() <= 100 &&
+             data.nama is string && data.nama.size() <= 500 &&
+             data.pagu is number && data.pagu >= 0 &&
+             (!('kegiatan' in data) || (data.kegiatan is list));
+    }
+
+    function isValidEmployee(data) {
+      return data.keys().hasAll(['nama', 'nip', 'jabatan']) &&
+             data.nama is string && data.nama.size() <= 200 &&
+             data.nip is string && data.nip.size() <= 50 &&
+             data.jabatan is string && data.jabatan.size() <= 200;
+    }
+
+    // --- COLLECTION MATCHES ---
+
+    // Public settings (agency info)
+    match /settings/{settingId} {
+      allow get: if true; // Publicly readable for login screen
+      allow list: if isSignedIn();
+      allow write: if isSuperAdmin();
+    }
+
+    // Username mapping for identity resolution
+    match /usernames/{username} {
+      allow get: if true; // Needed for login username -> email resolver
+      allow list: if isSuperAdmin();
+      allow write: if isSuperAdmin();
+    }
+
+    // Authorized users list
+    match /authorized_users/{email} {
+      // User can read their own profile
+      allow get: if isSignedIn() && request.auth.token.email.lower() == email.lower();
+      // Super Admin can manage all
+      allow list: if isSuperAdmin();
+      allow create: if isSuperAdmin() && isValidAuthorizedUser(incoming());
+      allow update: if (isSuperAdmin() && isValidAuthorizedUser(incoming())) ||
+                       (isSignedIn() && request.auth.token.email.lower() == email.lower() && 
+                        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'username', 'password']));
+      allow delete: if isSuperAdmin();
+    }
+
+    // SPJ Packets
+    match /packets/{packetId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidPacket(incoming()) && isValidId(packetId);
+      allow update: if isAdmin() && isValidPacket(incoming());
+      allow delete: if isSuperAdmin();
+    }
+
+    // Budget Programs
+    match /programs/{programId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidProgram(incoming()) && isValidId(programId);
+      allow update: if isAdmin() && isValidProgram(incoming());
+      allow delete: if isSuperAdmin();
+    }
+
+    // Employees
+    match /employees/{employeeId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidEmployee(incoming()) && isValidId(employeeId);
+      allow update: if isAdmin() && isValidEmployee(incoming());
+      allow delete: if isSuperAdmin();
+    }
+
+    // Test connection
+    match /test/connection {
+      allow get: if true;
+    }
+  }
+}
