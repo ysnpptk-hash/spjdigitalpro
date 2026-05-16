@@ -91,7 +91,7 @@ export const isUserAuthorized = async (identifier: string) => {
     }
     
     // Fallback if mapping missing (only for logged in users or superadmin bootstrap)
-    const q = query(collection(db, 'authorized_users'), where('username', '==', identifier.trim()));
+    const q = query(collection(db, 'authorized_users'), where('username', '==', cleanId));
     const querySnapshot = await getDocs(q);
     if (!querySnapshot.empty) {
       const doc = querySnapshot.docs[0];

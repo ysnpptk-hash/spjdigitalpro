@@ -9,11 +9,27 @@ interface SettingsProps {
     name: string;
     address: string;
     logo: string;
+    defaultPaNama?: string;
+    defaultPaNip?: string;
+    defaultPaJabatan?: string;
+    defaultPaPangkat?: string;
+    defaultBendaharaNama?: string;
+    defaultBendaharaNip?: string;
+    defaultBendaharaJabatan?: string;
+    defaultBendaharaPangkat?: string;
   };
   setAgencyInfo: React.Dispatch<React.SetStateAction<{
     name: string;
     address: string;
     logo: string;
+    defaultPaNama?: string;
+    defaultPaNip?: string;
+    defaultPaJabatan?: string;
+    defaultPaPangkat?: string;
+    defaultBendaharaNama?: string;
+    defaultBendaharaNip?: string;
+    defaultBendaharaJabatan?: string;
+    defaultBendaharaPangkat?: string;
   }>>;
   currentUser?: { email: string; role?: string } | null;
 }
@@ -84,7 +100,7 @@ export default function Settings({ agencyInfo, setAgencyInfo, currentUser }: Set
                   <input 
                     type="text" 
                     disabled={!isSuperAdmin}
-                    value={agencyInfo.name}
+                    value={agencyInfo.name || ''}
                     onChange={(e) => handleUpdate('name', e.target.value)}
                     className={`w-full px-6 py-4 border rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black ${!isSuperAdmin ? 'bg-slate-100 border-slate-200 cursor-not-allowed opacity-70' : 'bg-slate-50 border-slate-200'}`}
                     placeholder="Masukkan nama instansi resmi..."
@@ -98,11 +114,115 @@ export default function Settings({ agencyInfo, setAgencyInfo, currentUser }: Set
                   <MapPin className="absolute left-5 top-5 text-slate-300" size={20} />
                   <textarea 
                     disabled={!isSuperAdmin}
-                    value={agencyInfo.address}
+                    value={agencyInfo.address || ''}
                     onChange={(e) => handleUpdate('address', e.target.value)}
                     className={`w-full pl-14 pr-6 py-4 border rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black h-32 ${!isSuperAdmin ? 'bg-slate-100 border-slate-200 cursor-not-allowed opacity-70' : 'bg-slate-50 border-slate-200'}`}
                     placeholder="Jl. Raya No. 123, Kota, Provinsi..."
                   />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Default Officials Section */}
+          <div className="glass-card p-10 bg-white shadow-sm border border-slate-100 rounded-3xl space-y-8">
+            <div className="flex items-center gap-3 pb-6 border-b border-slate-50">
+              <div className="p-2 bg-amber-50 rounded-lg text-amber-500">
+                <Building2 size={24} />
+              </div>
+              <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Pejabat & Bendahara Penandatangan</h2>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-4 md:col-span-2">
+                <h3 className="text-xs font-black text-slate-800 uppercase border-l-4 border-primary pl-3">Pengguna Anggaran (PA)</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Nama Lengkap PA</label>
+                    <input 
+                      type="text" 
+                      disabled={!isSuperAdmin}
+                      value={agencyInfo.defaultPaNama || ''}
+                      onChange={(e) => handleUpdate('defaultPaNama', e.target.value)}
+                      className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">NIP PA</label>
+                    <input 
+                      type="text" 
+                      disabled={!isSuperAdmin}
+                      value={agencyInfo.defaultPaNip || ''}
+                      onChange={(e) => handleUpdate('defaultPaNip', e.target.value)}
+                      className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Jabatan PA</label>
+                    <input 
+                      type="text" 
+                      disabled={!isSuperAdmin}
+                      value={agencyInfo.defaultPaJabatan || ''}
+                      onChange={(e) => handleUpdate('defaultPaJabatan', e.target.value)}
+                      className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Pangkat/Golongan PA</label>
+                    <input 
+                      type="text" 
+                      disabled={!isSuperAdmin}
+                      value={agencyInfo.defaultPaPangkat || ''}
+                      onChange={(e) => handleUpdate('defaultPaPangkat', e.target.value)}
+                      className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4 md:col-span-2 pt-6 border-t border-slate-50">
+                <h3 className="text-xs font-black text-slate-800 uppercase border-l-4 border-orange-500 pl-3">Bendahara Pengeluaran</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Nama Bendahara</label>
+                    <input 
+                      type="text" 
+                      disabled={!isSuperAdmin}
+                      value={agencyInfo.defaultBendaharaNama || ''}
+                      onChange={(e) => handleUpdate('defaultBendaharaNama', e.target.value)}
+                      className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">NIP Bendahara</label>
+                    <input 
+                      type="text" 
+                      disabled={!isSuperAdmin}
+                      value={agencyInfo.defaultBendaharaNip || ''}
+                      onChange={(e) => handleUpdate('defaultBendaharaNip', e.target.value)}
+                      className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Jabatan Bendahara</label>
+                    <input 
+                      type="text" 
+                      disabled={!isSuperAdmin}
+                      value={agencyInfo.defaultBendaharaJabatan || ''}
+                      onChange={(e) => handleUpdate('defaultBendaharaJabatan', e.target.value)}
+                      className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Pangkat/Golongan Bendahara</label>
+                    <input 
+                      type="text" 
+                      disabled={!isSuperAdmin}
+                      value={agencyInfo.defaultBendaharaPangkat || ''}
+                      onChange={(e) => handleUpdate('defaultBendaharaPangkat', e.target.value)}
+                      className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

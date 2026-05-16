@@ -53,19 +53,27 @@ export default function Dashboard() {
 
   const pieData = [
     { name: 'Selesai', value: packets.filter(p => p.statusDokumen === 'Selesai').length, color: '#059669' },
-    { name: 'Verifikasi', value: packets.filter(p => p.statusDokumen === 'Verifikasi').length, color: '#8b5cf6' },
+    { name: 'Proses', value: packets.filter(p => p.statusDokumen === 'Proses').length, color: '#8b5cf6' },
     { name: 'Draft', value: packets.filter(p => p.statusDokumen === 'Draft').length, color: '#94a3b8' },
     { name: 'Revisi', value: packets.filter(p => p.statusDokumen === 'Revisi').length, color: '#ef4444' },
   ];
 
-  // If no data, show some dummy for charts to look good but use real values for cards
-  const chartData = [
-    { name: 'Jan', realisasi: totalRealisasi * 0.1, pagu: totalPagu / 12 },
-    { name: 'Feb', realisasi: totalRealisasi * 0.2, pagu: totalPagu / 12 },
-    { name: 'Mar', realisasi: totalRealisasi * 0.4, pagu: totalPagu / 12 },
-    { name: 'Apr', realisasi: totalRealisasi * 0.6, pagu: totalPagu / 12 },
-    { name: 'Mei', realisasi: totalRealisasi, pagu: totalPagu / 12 },
-  ];
+  // Group realisasi by month from packets
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const currentMonthIdx = new Date().getMonth();
+  
+  const chartData = months.slice(0, currentMonthIdx + 1).map((month, idx) => {
+    const monthlyRealisasi = packets.filter(p => {
+      const pDate = new Date(p.tanggalMulai);
+      return pDate.getMonth() === idx;
+    }).reduce((acc, p) => acc + (p.nilaiKontrak || 0), 0);
+    
+    return {
+      name: month,
+      realisasi: monthlyRealisasi,
+      pagu: totalPagu / 12
+    };
+  });
 
   const formatDate = (date: Date) => {
     return new Intl.DateTimeFormat('id-ID', {

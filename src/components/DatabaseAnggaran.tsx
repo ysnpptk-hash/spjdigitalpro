@@ -613,6 +613,39 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
     show: { opacity: 1, y: 0 }
   };
 
+  const filteredPrograms = programs.filter(prog => {
+    const searchLower = searchTerm.toLowerCase();
+    
+    // Check Program level
+    const progMatch = prog.nama.toLowerCase().includes(searchLower) || prog.kode.toLowerCase().includes(searchLower);
+    if (progMatch) return true;
+    
+    // Check Kegiatan level
+    const kegMatch = prog.kegiatan.some(keg => 
+      keg.nama.toLowerCase().includes(searchLower) || keg.kode.toLowerCase().includes(searchLower)
+    );
+    if (kegMatch) return true;
+    
+    // Check SubKegiatan level
+    const subMatch = prog.kegiatan.some(keg => 
+      keg.subKegiatan.some(sub => 
+        sub.nama.toLowerCase().includes(searchLower) || sub.kode.toLowerCase().includes(searchLower)
+      )
+    );
+    if (subMatch) return true;
+    
+    // Check Belanja level
+    const belMatch = prog.kegiatan.some(keg => 
+      keg.subKegiatan.some(sub => 
+        sub.belanja.some(bel => 
+          bel.uraian.toLowerCase().includes(searchLower) || bel.kode.toLowerCase().includes(searchLower)
+        )
+      )
+    );
+    
+    return belMatch;
+  });
+
   return (
     <div className="space-y-8">
       {/* Modals */}
@@ -711,7 +744,7 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Satuan</label>
                         <input 
                           type="text" 
-                          value={newBelanja.satuan}
+                          value={newBelanja.satuan || ''}
                           onChange={(e) => setNewBelanja({...newBelanja, satuan: e.target.value})}
                           placeholder="Contoh: Orang/Hari, Rim, Pkt"
                           className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-primary/20 text-sm font-bold"
@@ -836,7 +869,7 @@ export default function DatabaseAnggaran({ currentUser, onNavigate }: DatabaseAn
       </div>
 
       <div className="space-y-6">
-        {programs.map((prog) => (
+        {filteredPrograms.map((prog) => (
           <motion.div 
             key={prog.id} 
             variants={itemAnim}

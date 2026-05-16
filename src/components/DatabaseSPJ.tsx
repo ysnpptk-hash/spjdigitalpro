@@ -11,22 +11,26 @@ import { DocumentType, Packet, ShoppingItem, Program, Vendor, Employee } from '.
 import { formatCurrency, formatDate, cn, terbilang, formatNPWP } from '../lib/utils';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import LaporanRealisasi from './LaporanRealisasi';
-import { collection, onSnapshot, doc, setDoc, getDoc, deleteDoc, query, orderBy, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, setDoc, getDoc, deleteDoc, query, orderBy, updateDoc, getDocs } from 'firebase/firestore';
 
 interface DatabaseSPJProps {
   agencyInfo: {
     name: string;
     address: string;
     logo: string;
+    defaultPaNama?: string;
+    defaultPaNip?: string;
+    defaultPaJabatan?: string;
+    defaultPaPangkat?: string;
+    defaultBendaharaNama?: string;
+    defaultBendaharaNip?: string;
+    defaultBendaharaJabatan?: string;
+    defaultBendaharaPangkat?: string;
   };
-  setAgencyInfo: React.Dispatch<React.SetStateAction<{
-    name: string;
-    address: string;
-    logo: string;
-  }>>;
+  setAgencyInfo: React.Dispatch<React.SetStateAction<any>>;
 }
 
-export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJProps) {
+export default function DatabaseSPJ({ agencyInfo }: DatabaseSPJProps) {
   const [spjList, setSpjList] = useState<Packet[]>([]);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -40,6 +44,32 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
   const [kategoriOptions, setKategoriOptions] = useState<string[]>(['Barang', 'Jasa Konsultansi', 'Konstruksi', 'Jasa Lainnya']);
   const [newKategori, setNewKategori] = useState('');
   const [showAddKategori, setShowAddKategori] = useState(false);
+  const [sortField, setSortField] = useState<keyof Packet>('createdAt');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  const handleSort = (field: keyof Packet) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  useEffect(() => {
+    // Sync Kategori Options from existing data and vendors
+    const packetKats = spjList.map(p => p.kategori).filter(Boolean);
+    const vendorKats = vendors.map(v => v.kategori).filter(Boolean);
+    const uniqueKats = Array.from(new Set([
+      'Barang', 
+      'Jasa Konsultansi', 
+      'Konstruksi', 
+      'Jasa Lainnya', 
+      ...packetKats, 
+      ...vendorKats
+    ]));
+    setKategoriOptions(uniqueKats);
+  }, [spjList, vendors]);
 
   useEffect(() => {
     // Fetch Packets
@@ -50,11 +80,6 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
         data.push({ id: doc.id, ...doc.data() } as Packet);
       });
       setSpjList(data);
-      
-      // Sync Kategori Options from existing data
-      const uniqueKats = Array.from(new Set([...['Barang', 'Jasa Konsultansi', 'Konstruksi', 'Jasa Lainnya'], ...data.map(p => p.kategori).filter(Boolean)]));
-      setKategoriOptions(uniqueKats);
-      
       setLoading(false);
     });
 
@@ -98,6 +123,7 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
 
   const [showInput, setShowInput] = useState(false);
   const [showBudgetSelector, setShowBudgetSelector] = useState(false);
+  const [budgetSearchTerm, setBudgetSearchTerm] = useState('');
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedSpj, setSelectedSpj] = useState<Packet | null>(null);
   const [viewingDoc, setViewingDoc] = useState<DocumentType>(null);
@@ -108,6 +134,8 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
     npwpPenyedia: '',
     bankPenyedia: '',
     rekeningPenyedia: '',
+    teleponPenyedia: '',
+    emailPenyedia: '',
     paguAnggaran: 0,
     nilaiKontrak: 0,
     tanggalMulai: '',
@@ -115,6 +143,23 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
     pic: '',
     nipPic: '',
     jabatanPic: 'Pejabat Pelaksana Teknis Kegiatan',
+    pangkatPic: '',
+    // Data Pejabat Lengkap
+    paNama: '',
+    paNip: '',
+    paJabatan: 'Pengguna Anggaran',
+    paPangkat: '',
+    pptkNama: '',
+    pptkNip: '',
+    pptkJabatan: 'Pejabat Pelaksana Teknis Kegiatan',
+    pptkPangkat: '',
+    bendaharaNama: '',
+    bendaharaNip: '',
+    bendaharaJabatan: 'Bendahara Pengeluaran',
+    bendaharaPangkat: '',
+    // Data Penyedia Lengkap
+    pimpinanPenyedia: '',
+    alamatPenyedia: '',
     metodePengadaan: 'Pengadaan Langsung',
     regulasiAcuan: 'PerLKPP No. 2 Tahun 2025',
     nomorBerkas: '',
@@ -193,6 +238,15 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
       pph42: Math.round(pph42) 
     };
   };
+
+  useEffect(() => {
+    if (formData.rekapBelanja && formData.rekapBelanja.length > 0) {
+      const total = formData.rekapBelanja.reduce((sum, item) => sum + (item.volume * item.hargaSatuan), 0);
+      if (formData.nilaiKontrak !== total) {
+        setFormData(prev => ({ ...prev, nilaiKontrak: total }));
+      }
+    }
+  }, [formData.rekapBelanja]);
 
   useEffect(() => {
     if (formData.nilaiKontrak !== undefined) {
@@ -344,14 +398,21 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
   const generateDocNumbers = () => {
     if (!formData.nomorBerkas) return alert('Silakan isi Nomor Berkas terlebih dahulu sebagai acuan.');
     
-    // Pattern: 001/PPTK/SETWAN/2026 -> 001/PA-Konst/SPPBJ/XI/2026
-    // We try to keep the first segment (sequence) and the year, but replace the middle
+    // Pattern example: 001/PPTK/SETWAN/2026 -> 001/PA-Konst/SPPBJ/XI/2026
     const segments = formData.nomorBerkas.split('/');
     const seq = segments[0] || '001';
-    const year = segments[segments.length - 1] || '2026';
     
-    const newSppbj = `${seq}/PA-Konst/SPPBJ/XI/${year}`;
-    const newSpmk = `${seq}/PA-Konst/SPMK/XI/${year}`;
+    // Detect year from nomor berkas or use current
+    let year = segments.length > 1 ? segments[segments.length - 1] : new Date().getFullYear().toString();
+    if (isNaN(Number(year))) year = new Date().getFullYear().toString();
+
+    // Map month to Roman numerals for Indonesian standard
+    const monthIndex = new Date().getMonth();
+    const romanMonths = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+    const currentRomanMonth = romanMonths[monthIndex];
+    
+    const newSppbj = `${seq}/PA-Konst/SPPBJ/${currentRomanMonth}/${year}`;
+    const newSpmk = `${seq}/PA-Konst/SPMK/${currentRomanMonth}/${year}`;
     
     setFormData(prev => ({
       ...prev,
@@ -373,17 +434,43 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
       const id = isEditMode && formData.id ? formData.id : Math.random().toString(36).substr(2, 9);
       const prevPacket = isEditMode ? spjList.find(p => p.id === id) : null;
       
-      const packetData = {
+      // Calculate NEXT sequence number correctly
+      let nextNo = 1;
+      if (!isEditMode) {
+        if (spjList.length > 0) {
+          nextNo = Math.max(...spjList.map(p => p.no || 0)) + 1;
+        }
+      } else {
+        nextNo = formData.no || (spjList.length + 1);
+      }
+
+      const packetData: Packet = {
         ...formData,
         id,
-        no: isEditMode ? formData.no : spjList.length + 1,
+        no: nextNo,
         progressFisik: isEditMode ? (formData.progressFisik ?? 0) : 0,
         statusDokumen: formData.statusDokumen || 'Draft',
-        updatedAt: new Date().toISOString()
-      };
+        updatedAt: new Date().toISOString(),
+        namaPaket: formData.namaPaket || '',
+        penyedia: formData.penyedia || '',
+        paguAnggaran: formData.paguAnggaran || 0,
+        nilaiKontrak: formData.nilaiKontrak || 0,
+        tanggalMulai: formData.tanggalMulai || '',
+        tanggalSelesai: formData.tanggalSelesai || '',
+        pic: formData.pic || '',
+        // Ensure all vendor data is explicitly present
+        pimpinanPenyedia: formData.pimpinanPenyedia || '',
+        alamatPenyedia: formData.alamatPenyedia || '',
+        npwpPenyedia: formData.npwpPenyedia || '',
+        bankPenyedia: formData.bankPenyedia || '',
+        rekeningPenyedia: formData.rekeningPenyedia || '',
+        teleponPenyedia: formData.teleponPenyedia || '',
+        emailPenyedia: formData.emailPenyedia || '',
+        kategori: formData.kategori || 'Barang'
+      } as Packet;
 
       if (!isEditMode) {
-        (packetData as any).createdAt = new Date().toISOString();
+        packetData.createdAt = new Date().toISOString();
       }
 
       await setDoc(doc(db, 'packets', id), packetData);
@@ -462,13 +549,32 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
       npwpPenyedia: '',
       bankPenyedia: '',
       rekeningPenyedia: '',
+      teleponPenyedia: '',
+      emailPenyedia: '',
       paguAnggaran: 0,
       nilaiKontrak: 0,
       tanggalMulai: today,
       tanggalSelesai: today,
       pic: '',
       nipPic: '',
-      jabatanPic: 'Pengguna Anggaran',
+      jabatanPic: 'Pejabat Pelaksana Teknis Kegiatan',
+      pangkatPic: '',
+      // Data Pejabat Lengkap - Auto populate from defaults
+      paNama: agencyInfo.defaultPaNama || '',
+      paNip: agencyInfo.defaultPaNip || '',
+      paJabatan: agencyInfo.defaultPaJabatan || 'Pengguna Anggaran',
+      paPangkat: agencyInfo.defaultPaPangkat || '',
+      pptkNama: '',
+      pptkNip: '',
+      pptkJabatan: 'Pejabat Pelaksana Teknis Kegiatan',
+      pptkPangkat: '',
+      bendaharaNama: agencyInfo.defaultBendaharaNama || '',
+      bendaharaNip: agencyInfo.defaultBendaharaNip || '',
+      bendaharaJabatan: agencyInfo.defaultBendaharaJabatan || 'Bendahara Pengeluaran',
+      bendaharaPangkat: agencyInfo.defaultBendaharaPangkat || '',
+      // Data Penyedia Lengkap
+      pimpinanPenyedia: '',
+      alamatPenyedia: '',
       metodePengadaan: 'Pengadaan Langsung',
       regulasiAcuan: 'PerLKPP No. 2 Tahun 2025',
       nomorBerkas: '',
@@ -493,7 +599,7 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
       nilaiPPh42: 0,
       tenagaAhli: '',
       ruangLingkup: '',
-      lokasiPekerjaan: '',
+      lokasiPekerjaan: 'Kantor Sekretariat DPRD Prov. Kalteng',
       merkType: '',
       rekapBelanja: [],
       belanjaId: '',
@@ -515,9 +621,29 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
     const matchesStatus = filterStatus === 'Semua' || spj.statusDokumen === filterStatus;
     const matchesKategori = filterKategori === 'Semua' || spj.kategori === filterKategori;
     const matchesPenyedia = !filterPenyedia || (spj.penyedia?.toLowerCase() || '').includes(filterPenyedia.toLowerCase());
-    const matchesTanggal = !filterTanggal || (spj.tanggalMulai === filterTanggal);
+    const matchesTanggal = !filterTanggal || (spj.tanggalMulai >= filterTanggal);
     
     return matchesSearch && matchesStatus && matchesKategori && matchesPenyedia && matchesTanggal;
+  });
+
+  const sortedSpjList = [...filteredSpjList].sort((a, b) => {
+    const valA = a[sortField];
+    const valB = b[sortField];
+    
+    if (valA === undefined || valB === undefined) {
+      if (valA === undefined && valB === undefined) return 0;
+      return valA === undefined ? 1 : -1;
+    }
+
+    if (typeof valA === 'string' && typeof valB === 'string') {
+      return sortDirection === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+    }
+    
+    if (typeof valA === 'number' && typeof valB === 'number') {
+      return sortDirection === 'asc' ? valA - valB : valB - valA;
+    }
+
+    return 0;
   });
 
   const getLinkedDetails = (spj: Packet) => {
@@ -612,7 +738,7 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                 onChange={(e) => setFilterKategori(e.target.value)}
                 className="w-full pl-10 pr-6 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-xs font-bold focus:ring-2 focus:ring-primary/10 transition-all appearance-none cursor-pointer outline-none"
               >
-                <option value="Semua">Kategori: Semua</option>
+                <option value="Semua">Jenis SPJ: Semua</option>
                 {kategoriOptions.map(kat => (
                   <option key={kat} value={kat}>{kat}</option>
                 ))}
@@ -651,15 +777,29 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
           <table className="w-full text-left">
              <thead>
               <tr className="bg-slate-50 text-[10px] uppercase tracking-widest font-black text-slate-400 border-b border-slate-100">
-                <th className="px-6 py-5">No</th>
-                <th className="px-6 py-5">Paket Pekerjaan / Penyedia</th>
-                <th className="px-6 py-5">Kontrak (IDR)</th>
-                <th className="px-6 py-5">Status / Dokumen</th>
+                <th className="px-6 py-5 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('no')}>
+                  <div className="flex items-center gap-1">No {sortField === 'no' && (sortDirection === 'asc' ? '↑' : '↓')}</div>
+                </th>
+                <th className="px-6 py-5 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('namaPaket')}>
+                  <div className="flex items-center gap-1">Paket Pekerjaan / Penyedia {sortField === 'namaPaket' && (sortDirection === 'asc' ? '↑' : '↓')}</div>
+                </th>
+                <th className="px-6 py-5">Jenis SPJ</th>
+                <th className="px-6 py-5 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('nilaiKontrak')}>
+                  <div className="flex items-center gap-1">Kontrak (IDR) {sortField === 'nilaiKontrak' && (sortDirection === 'asc' ? '↑' : '↓')}</div>
+                </th>
+                <th className="px-6 py-5 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('createdAt')}>
+                  <div className="flex items-center gap-1">Tanggal SPJ {sortField === 'createdAt' && (sortDirection === 'asc' ? '↑' : '↓')}</div>
+                </th>
+                <th className="px-6 py-5">PIC / NIP</th>
+                <th className="px-6 py-5 cursor-pointer hover:bg-slate-100" onClick={() => handleSort('statusDokumen')}>
+                  <div className="flex items-center gap-1">Status {sortField === 'statusDokumen' && (sortDirection === 'asc' ? '↑' : '↓')}</div>
+                </th>
+                <th className="px-6 py-5">Akses Dokumen</th>
                 <th className="px-6 py-5">Aksi</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {filteredSpjList.length > 0 ? filteredSpjList.map((spj) => (
+              {sortedSpjList.length > 0 ? sortedSpjList.map((spj) => (
                 <tr 
                   key={spj.id} 
                   className="hover:bg-slate-50/50 transition-colors group cursor-pointer"
@@ -669,8 +809,13 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                   <td className="px-6 py-5">
                     <div>
                       <h4 className="font-black text-slate-900 tracking-tight">{spj.namaPaket}</h4>
-                      <p className="text-xs font-bold text-slate-400 uppercase tracking-tighter mt-1">{spj.kategori} • {spj.penyedia}</p>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-tighter mt-1">{spj.penyedia}</p>
                     </div>
+                  </td>
+                  <td className="px-6 py-5">
+                    <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-wider border border-slate-200">
+                      {spj.kategori}
+                    </span>
                   </td>
                    <td className="px-6 py-5">
                     <div className="space-y-1">
@@ -679,21 +824,33 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                     </div>
                   </td>
                   <td className="px-6 py-5">
-                    <div className="flex flex-wrap gap-2">
-                       <span className={cn(
-                        "px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
-                        spj.statusDokumen === 'Selesai' ? "bg-green-50 border-green-200 text-green-600" : 
-                        spj.statusDokumen === 'Proses' ? "bg-blue-50 border-blue-200 text-blue-600" :
-                        spj.statusDokumen === 'Revisi' ? "bg-red-50 border-red-200 text-red-600" :
-                        "bg-amber-50 border-amber-200 text-amber-600"
-                      )}>
-                        {spj.statusDokumen}
-                      </span>
-                      <div className="flex gap-2">
-                        <div title="Kwintansi" className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-slate-400 group-hover:text-primary transition-colors"><Receipt size={14} /></div>
-                        <div title="BAST" className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-slate-400 group-hover:text-primary transition-colors"><Truck size={14} /></div>
-                        <div title="Kontrak" className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-slate-400 group-hover:text-primary transition-colors"><FileSignature size={14} /></div>
-                      </div>
+                    <div className="flex flex-col gap-1">
+                      <p className="text-xs font-black text-slate-600 tracking-tight">{spj.createdAt ? formatDate(spj.createdAt) : '-'}</p>
+                      <p className="text-[9px] font-bold text-slate-400 tabular-nums uppercase">{spj.createdAt ? new Date(spj.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''}</p>
+                    </div>
+                  </td>
+                  <td className="px-6 py-5">
+                    <div className="flex flex-col gap-1">
+                      <p className="text-xs font-black text-slate-900 tracking-tight">{spj.pic}</p>
+                      <p className="text-[10px] font-bold text-slate-400 tabular-nums">NIP. {spj.nipPic}</p>
+                    </div>
+                  </td>
+                  <td className="px-6 py-5">
+                    <span className={cn(
+                      "px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border whitespace-nowrap",
+                      spj.statusDokumen === 'Selesai' ? "bg-green-50 border-green-200 text-green-600" : 
+                      spj.statusDokumen === 'Proses' ? "bg-blue-50 border-blue-200 text-blue-600" :
+                      spj.statusDokumen === 'Revisi' ? "bg-red-50 border-red-200 text-red-600" :
+                      "bg-amber-50 border-amber-200 text-amber-600"
+                    )}>
+                      {spj.statusDokumen}
+                    </span>
+                  </td>
+                  <td className="px-6 py-5">
+                    <div className="flex gap-2">
+                      <div title="Kwintansi" className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-slate-400 group-hover:text-primary transition-colors"><Receipt size={14} /></div>
+                      <div title="BAST" className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-slate-400 group-hover:text-primary transition-colors"><Truck size={14} /></div>
+                      <div title="Kontrak" className="w-6 h-6 rounded bg-slate-100 flex items-center justify-center text-slate-400 group-hover:text-primary transition-colors"><FileSignature size={14} /></div>
                     </div>
                   </td>
                   <td className="px-6 py-5">
@@ -724,7 +881,7 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={5} className="px-6 py-20 text-center">
+                  <td colSpan={9} className="px-6 py-20 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <div className="p-4 bg-slate-50 rounded-full text-slate-200">
                         <Search size={40} />
@@ -886,7 +1043,7 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                 </div>
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Kategori</label>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Jenis SPJ (Kategori)</label>
                     <button 
                       onClick={() => setShowAddKategori(!showAddKategori)}
                       className="text-[9px] font-black text-primary uppercase hover:underline"
@@ -929,21 +1086,32 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                     </select>
                   )}
                 </div>
+                {/* Seksi Data Penyedia */}
+                <div className="md:col-span-2">
+                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight flex items-center gap-2 border-b border-slate-100 pb-2 mb-4 mt-4">
+                    <Truck size={18} className="text-primary" /> Informasi Penyedia / Rekanan (Pihak III)
+                  </h3>
+                </div>
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Penyedia / Vendor</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nama Perusahaan / Penyedia</label>
                   <input 
                     type="text" 
                     list="vendor-list"
-                    value={formData.penyedia}
+                    value={formData.penyedia || ''}
                     onChange={(e) => {
                       const selectedVen = vendors.find(v => v.namaPenyedia === e.target.value);
                       if (selectedVen) {
                         setFormData({
                           ...formData,
                           penyedia: selectedVen.namaPenyedia,
+                          pimpinanPenyedia: selectedVen.namaPimpinan,
+                          alamatPenyedia: selectedVen.alamat,
                           npwpPenyedia: selectedVen.npwp,
                           bankPenyedia: selectedVen.bank,
-                          rekeningPenyedia: selectedVen.nomorRekening
+                          rekeningPenyedia: selectedVen.nomorRekening,
+                          teleponPenyedia: selectedVen.telepon,
+                          emailPenyedia: selectedVen.email,
+                          kategori: selectedVen.kategori || formData.kategori
                         });
                       } else {
                         setFormData({...formData, penyedia: e.target.value});
@@ -954,95 +1122,304 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                   />
                   <datalist id="vendor-list">
                     {vendors.map(v => (
-                      <option key={v.id} value={v.namaPenyedia}>{v.namaPenyedia} - {v.namaPimpinan}</option>
+                      <option key={v.id} value={v.namaPenyedia}>{v.namaPimpinan} - {v.alamat.substring(0, 30)}...</option>
                     ))}
                   </datalist>
+                  <datalist id="employee-list">
+                    {employees.map(e => (
+                      <option key={e.id} value={e.nama}>{e.nip} - {e.jabatan}</option>
+                    ))}
+                  </datalist>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nama Pimpinan (Direktur/Pimpinan)</label>
+                  <input 
+                    type="text" 
+                    value={formData.pimpinanPenyedia || ''}
+                    onChange={(e) => setFormData({...formData, pimpinanPenyedia: e.target.value})}
+                    placeholder="Nama Direktur / Pimpinan"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black text-indigo-600"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Alamat Lengkap Kantor Penyedia</label>
+                  <textarea 
+                    value={formData.alamatPenyedia || ''}
+                    onChange={(e) => setFormData({...formData, alamatPenyedia: e.target.value})}
+                    placeholder="Jl. ........................."
+                    className="w-full px-5 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-bold min-h-[80px]"
+                  />
                 </div>
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">NPWP Penyedia</label>
                   <input 
                     type="text" 
-                    value={formData.npwpPenyedia}
+                    value={formData.npwpPenyedia || ''}
                     onChange={(e) => setFormData({...formData, npwpPenyedia: formatNPWP(e.target.value)})}
                     placeholder="00.000.000.0-000.000"
                     className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Bank & No Rekening</label>
-                  <div className="flex gap-2">
-                    <input 
-                      type="text" 
-                      value={formData.bankPenyedia}
-                      onChange={(e) => setFormData({...formData, bankPenyedia: e.target.value})}
-                      placeholder="Bank Kalteng"
-                      className="w-1/3 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
-                    />
-                    <input 
-                      type="text" 
-                      value={formData.rekeningPenyedia}
-                      onChange={(e) => setFormData({...formData, rekeningPenyedia: e.target.value})}
-                      placeholder="No Rekening"
-                      className="w-2/3 px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
-                    />
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Telepon Penyedia</label>
+                  <input 
+                    type="text" 
+                    value={formData.teleponPenyedia || ''}
+                    onChange={(e) => setFormData({...formData, teleponPenyedia: e.target.value})}
+                    placeholder="No. HP / WA"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Email Penyedia</label>
+                  <input 
+                    type="email" 
+                    value={formData.emailPenyedia || ''}
+                    onChange={(e) => setFormData({...formData, emailPenyedia: e.target.value})}
+                    placeholder="email@penyedia.com"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Bank Operasional</label>
+                  <input 
+                    type="text" 
+                    value={formData.bankPenyedia || ''}
+                    onChange={(e) => setFormData({...formData, bankPenyedia: e.target.value.toUpperCase()})}
+                    placeholder="Contoh: BANK KALTENG"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nomor Rekening Bank</label>
+                  <input 
+                    type="text" 
+                    value={formData.rekeningPenyedia || ''}
+                    onChange={(e) => setFormData({...formData, rekeningPenyedia: e.target.value})}
+                    placeholder="No Rekening"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black font-mono tracking-wider"
+                  />
+                </div>
+
+                {/* Seksi Pengguna Anggaran */}
+                <div className="md:col-span-2">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-4 mt-6">
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                      <UserCheck size={18} className="text-primary" /> Pengguna Anggaran (Sekretaris DPRD)
+                    </h3>
+                    <button 
+                      onClick={() => setFormData({
+                        ...formData,
+                        paNama: agencyInfo.defaultPaNama || '',
+                        paNip: agencyInfo.defaultPaNip || '',
+                        paJabatan: agencyInfo.defaultPaJabatan || 'Pengguna Anggaran',
+                        paPangkat: agencyInfo.defaultPaPangkat || ''
+                      })}
+                      className="text-[9px] font-black text-primary uppercase hover:underline"
+                    >
+                      Gunakan Default Instansi
+                    </button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">PIC / PPTK / PA</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nama PA</label>
                   <input 
                     type="text" 
                     list="employee-list"
-                    value={formData.pic}
+                    value={formData.paNama || ''}
                     onChange={(e) => {
                       const selectedEmp = employees.find(emp => emp.nama === e.target.value);
                       if (selectedEmp) {
                         setFormData({
                           ...formData,
-                          pic: selectedEmp.nama,
-                          nipPic: selectedEmp.nip,
-                          jabatanPic: selectedEmp.jabatan
+                          paNama: selectedEmp.nama,
+                          paNip: selectedEmp.nip,
+                          paJabatan: selectedEmp.jabatan,
+                          paPangkat: selectedEmp.pangkatGolongan || ''
                         });
                       } else {
-                        setFormData({...formData, pic: e.target.value});
+                        setFormData({...formData, paNama: e.target.value});
                       }
                     }}
-                    placeholder="Nama Pejabat"
+                    placeholder="Nama PA"
                     className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
                   />
-                  <datalist id="employee-list">
-                    {employees.map(e => (
-                      <option key={e.id} value={e.nama}>{e.nama} - {e.jabatan}</option>
-                    ))}
-                  </datalist>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">NIP Pejabat</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">NIP PA</label>
                   <input 
                     type="text" 
-                    value={formData.nipPic}
-                    onChange={(e) => setFormData({...formData, nipPic: e.target.value})}
-                    placeholder="19850101..."
+                    value={formData.paNip || ''}
+                    onChange={(e) => setFormData({...formData, paNip: e.target.value})}
+                    placeholder="NIP PA"
                     className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jabatan Pejabat</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jabatan PA</label>
                   <input 
                     type="text" 
-                    value={formData.jabatanPic}
-                    onChange={(e) => setFormData({...formData, jabatanPic: e.target.value})}
-                    placeholder="PPTK / PA"
+                    value={formData.paJabatan || ''}
+                    onChange={(e) => setFormData({...formData, paJabatan: e.target.value})}
+                    placeholder="PA / Sekretaris DPRD"
                     className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pagu Anggaran (IDR)</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pangkat / Golongan PA</label>
                   <input 
-                    type="number" 
-                    value={formData.paguAnggaran || ''}
-                    onChange={(e) => setFormData({...formData, paguAnggaran: Number(e.target.value)})}
+                    type="text" 
+                    value={formData.paPangkat || ''}
+                    onChange={(e) => setFormData({...formData, paPangkat: e.target.value})}
+                    placeholder="Pangkat PA"
                     className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
                   />
+                </div>
+
+                {/* Seksi PPTK */}
+                <div className="md:col-span-2">
+                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight flex items-center gap-2 border-b border-slate-100 pb-2 mb-4 mt-4">
+                    <PlayCircle size={18} className="text-primary" /> Pelaksana Kegiatan (PPTK)
+                  </h3>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nama PPTK</label>
+                  <input 
+                    type="text" 
+                    list="employee-list"
+                    value={formData.pptkNama || formData.pic || ''}
+                    onChange={(e) => {
+                      const selectedEmp = employees.find(emp => emp.nama === e.target.value);
+                      if (selectedEmp) {
+                        setFormData({
+                          ...formData,
+                          pptkNama: selectedEmp.nama,
+                          pptkNip: selectedEmp.nip,
+                          pptkJabatan: selectedEmp.jabatan,
+                          pptkPangkat: selectedEmp.pangkatGolongan || '',
+                          pic: selectedEmp.nama,
+                          nipPic: selectedEmp.nip,
+                          jabatanPic: selectedEmp.jabatan,
+                          pangkatPic: selectedEmp.pangkatGolongan || ''
+                        });
+                      } else {
+                        setFormData({...formData, pptkNama: e.target.value, pic: e.target.value});
+                      }
+                    }}
+                    placeholder="Nama PPTK"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">NIP PPTK</label>
+                  <input 
+                    type="text" 
+                    value={formData.pptkNip || formData.nipPic || ''}
+                    onChange={(e) => setFormData({...formData, pptkNip: e.target.value, nipPic: e.target.value})}
+                    placeholder="NIP PPTK"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jabatan PPTK</label>
+                  <input 
+                    type="text" 
+                    value={formData.pptkJabatan || formData.jabatanPic || ''}
+                    onChange={(e) => setFormData({...formData, pptkJabatan: e.target.value, jabatanPic: e.target.value})}
+                    placeholder="Pejabat Pelaksana Teknis Kegiatan"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pangkat / Golongan PPTK</label>
+                  <input 
+                    type="text" 
+                    value={formData.pptkPangkat || formData.pangkatPic || ''}
+                    onChange={(e) => setFormData({...formData, pptkPangkat: e.target.value, pangkatPic: e.target.value})}
+                    placeholder="Pangkat PPTK"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+
+                {/* Seksi Bendahara */}
+                <div className="md:col-span-2">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-4 mt-6">
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
+                      <CreditCard size={18} className="text-primary" /> Bendahara Pengeluaran
+                    </h3>
+                    <button 
+                      onClick={() => setFormData({
+                        ...formData,
+                        bendaharaNama: agencyInfo.defaultBendaharaNama || '',
+                        bendaharaNip: agencyInfo.defaultBendaharaNip || '',
+                        bendaharaJabatan: agencyInfo.defaultBendaharaJabatan || 'Bendahara Pengeluaran',
+                        bendaharaPangkat: agencyInfo.defaultBendaharaPangkat || ''
+                      })}
+                      className="text-[9px] font-black text-primary uppercase hover:underline"
+                    >
+                      Gunakan Default Instansi
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nama Bendahara</label>
+                  <input 
+                    type="text" 
+                    list="employee-list"
+                    value={formData.bendaharaNama || ''}
+                    onChange={(e) => {
+                      const selectedEmp = employees.find(emp => emp.nama === e.target.value);
+                      if (selectedEmp) {
+                        setFormData({
+                          ...formData,
+                          bendaharaNama: selectedEmp.nama,
+                          bendaharaNip: selectedEmp.nip,
+                          bendaharaJabatan: selectedEmp.jabatan,
+                          bendaharaPangkat: selectedEmp.pangkatGolongan || ''
+                        });
+                      } else {
+                        setFormData({...formData, bendaharaNama: e.target.value});
+                      }
+                    }}
+                    placeholder="Nama Bendahara"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">NIP Bendahara</label>
+                  <input 
+                    type="text" 
+                    value={formData.bendaharaNip || ''}
+                    onChange={(e) => setFormData({...formData, bendaharaNip: e.target.value})}
+                    placeholder="NIP Bendahara"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jabatan Bendahara</label>
+                  <input 
+                    type="text" 
+                    value={formData.bendaharaJabatan || ''}
+                    onChange={(e) => setFormData({...formData, bendaharaJabatan: e.target.value})}
+                    placeholder="Bendahara Pengeluaran"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pangkat / Golongan Bendahara</label>
+                  <input 
+                    type="text" 
+                    value={formData.bendaharaPangkat || ''}
+                    onChange={(e) => setFormData({...formData, bendaharaPangkat: e.target.value})}
+                    placeholder="Pangkat Bendahara"
+                    className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight flex items-center gap-2 border-b border-slate-100 pb-2 mb-4 mt-4">
+                    <FileText size={18} className="text-primary" /> Anggaran & Nilai Kontrak
+                  </h3>
                 </div>
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nilai Kontrak (IDR)</label>
@@ -1407,16 +1784,47 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
               <div className="space-y-4 pt-4 border-t border-slate-100">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Rekap Belanja / Rincian Item</h3>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Daftar barang atau jasa dalam paket ini</p>
+                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Rincian Belanja</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Daftar rincian belanja (Contoh: Kertas, Tinta, dll)</p>
                   </div>
-                  <button 
-                    type="button"
-                    onClick={addShoppingItem}
-                    className="px-4 py-2 bg-primary/5 text-primary rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/10 transition-all flex items-center gap-2"
-                  >
-                    <Plus size={14} /> Tambah Item
-                  </button>
+                  <div className="flex gap-2">
+                    {formData.belanjaId && (
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const prog = programs.find(p => p.id === formData.progId);
+                          const keg = prog?.kegiatan.find(k => k.id === formData.kegId);
+                          const sub = keg?.subKegiatan.find(s => s.id === formData.subId);
+                          const bel = sub?.belanja.find(b => b.id === formData.belanjaId);
+                          
+                          if (bel) {
+                            const shoppingItem: ShoppingItem = {
+                              id: Math.random().toString(36).substr(2, 9),
+                              uraian: bel.uraian,
+                              volume: bel.volume || 1,
+                              satuan: bel.satuan || 'Pcs',
+                              hargaSatuan: bel.hargaSatuan || 0
+                            };
+                            setFormData(prev => ({
+                              ...prev,
+                              rekapBelanja: [shoppingItem],
+                              nilaiKontrak: bel.pagu
+                            }));
+                          }
+                        }}
+                        className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-100 transition-all flex items-center gap-2 border border-emerald-100"
+                      >
+                        <Layers size={14} /> Sinkron Anggaran
+                      </button>
+                    )}
+                    <button 
+                      type="button"
+                      onClick={addShoppingItem}
+                      className="px-4 py-2 bg-primary/5 text-primary rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-primary/10 transition-all flex items-center gap-2 border border-primary/10"
+                    >
+                      <Plus size={14} /> Tambah Item
+                    </button>
+                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -1429,12 +1837,12 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                     >
                       <div className="col-span-1 text-[10px] font-black text-slate-300 mb-4">#{index + 1}</div>
                       <div className="col-span-5">
-                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Uraian Barang/Jasa</label>
+                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Rincian Belanja</label>
                         <input 
                           type="text"
                           value={item.uraian}
                           onChange={(e) => updateShoppingItem(item.id, 'uraian', e.target.value)}
-                          placeholder="Pena, Kertas, Jasa, dll"
+                          placeholder="Contoh: Kertas, Tinta, Pena, dll"
                           className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold focus:ring-2 focus:ring-primary/10 transition-all"
                         />
                       </div>
@@ -1526,41 +1934,91 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                 </button>
               </div>
 
+              {/* Search in Budget Selector */}
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input 
+                  type="text"
+                  placeholder="Cari Mata Anggaran (Kode atau Uraian)..."
+                  className="w-full pl-12 pr-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary/5 transition-all outline-none"
+                  onChange={(e) => {
+                    const term = e.target.value.toLowerCase();
+                    setBudgetSearchTerm(term);
+                  }}
+                />
+              </div>
+
               <div className="flex-grow overflow-y-auto space-y-4 pr-2">
-                {programs.map(prog => (
+                {programs.filter(prog => 
+                  prog.nama.toLowerCase().includes(budgetSearchTerm) || 
+                  prog.kode.toLowerCase().includes(budgetSearchTerm) ||
+                  prog.kegiatan.some(keg => 
+                    keg.nama.toLowerCase().includes(budgetSearchTerm) || 
+                    keg.subKegiatan.some(sub => 
+                      sub.nama.toLowerCase().includes(budgetSearchTerm) ||
+                      sub.belanja.some(bel => bel.uraian.toLowerCase().includes(budgetSearchTerm))
+                    )
+                  )
+                ).map(prog => (
                   <div key={prog.id} className="space-y-3">
                     <div className="bg-slate-900 text-white p-4 rounded-2xl">
                       <p className="text-[10px] font-black opacity-60 uppercase">{prog.kode}</p>
                       <h4 className="text-sm font-black italic">{prog.nama}</h4>
                     </div>
-                    {prog.kegiatan.map(keg => (
+                    {prog.kegiatan.filter(keg => 
+                      keg.nama.toLowerCase().includes(budgetSearchTerm) || 
+                      keg.subKegiatan.some(sub => 
+                        sub.nama.toLowerCase().includes(budgetSearchTerm) ||
+                        sub.belanja.some(bel => bel.uraian.toLowerCase().includes(budgetSearchTerm))
+                      ) || prog.nama.toLowerCase().includes(budgetSearchTerm)
+                    ).map(keg => (
                       <div key={keg.id} className="ml-6 space-y-2">
                         <div className="bg-primary/10 p-3 rounded-xl border border-primary/10">
                           <p className="text-[9px] font-black text-primary uppercase">{keg.kode}</p>
                           <h5 className="text-xs font-black text-slate-800">{keg.nama}</h5>
                         </div>
-                        {keg.subKegiatan.map(sub => (
+                        {keg.subKegiatan.filter(sub => 
+                          sub.nama.toLowerCase().includes(budgetSearchTerm) ||
+                          sub.belanja.some(bel => bel.uraian.toLowerCase().includes(budgetSearchTerm)) ||
+                          keg.nama.toLowerCase().includes(budgetSearchTerm) ||
+                          prog.nama.toLowerCase().includes(budgetSearchTerm)
+                        ).map(sub => (
                           <div key={sub.id} className="ml-6 space-y-2">
                             <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                               <p className="text-[8px] font-black text-slate-400 uppercase">{sub.kode}</p>
                               <h6 className="text-[11px] font-black text-slate-700">{sub.nama}</h6>
                             </div>
                             <div className="ml-6 grid grid-cols-1 md:grid-cols-2 gap-2">
-                              {sub.belanja.map(bel => (
+                              {sub.belanja.filter(bel => 
+                                bel.uraian.toLowerCase().includes(budgetSearchTerm) ||
+                                sub.nama.toLowerCase().includes(budgetSearchTerm) ||
+                                keg.nama.toLowerCase().includes(budgetSearchTerm) ||
+                                prog.nama.toLowerCase().includes(budgetSearchTerm)
+                              ).map(bel => (
                                 <button
                                   key={bel.id}
                                   onClick={() => {
+                                    const shoppingItem: ShoppingItem = {
+                                      id: Math.random().toString(36).substr(2, 9),
+                                      uraian: bel.uraian,
+                                      volume: bel.volume || 1,
+                                      satuan: bel.satuan || 'Pcs',
+                                      hargaSatuan: bel.hargaSatuan || 0
+                                    };
+                                    
                                     setFormData({
                                       ...formData,
                                       namaPaket: bel.uraian,
                                       paguAnggaran: bel.pagu,
+                                      nilaiKontrak: bel.pagu, // Initial contract value same as budget
                                       belanjaId: bel.id,
                                       progId: prog.id,
                                       kegId: keg.id,
                                       subId: sub.id,
                                       pic: keg.assignedTo || sub.assignedTo || formData.pic,
                                       nipPic: formData.nipPic,
-                                      metodePengadaan: 'Pengadaan Langsung'
+                                      metodePengadaan: 'Pengadaan Langsung',
+                                      rekapBelanja: [shoppingItem] // Auto populate rincian item
                                     });
                                     setShowBudgetSelector(false);
                                   }}
@@ -1644,7 +2102,7 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                         <p className="text-xs font-black text-slate-900">{selectedSpj.penyedia}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Kategori</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Jenis SPJ</p>
                         <p className="text-xs font-black text-primary uppercase">{selectedSpj.kategori}</p>
                       </div>
                       <div>
@@ -1794,6 +2252,8 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                     { id: 'SPMK', label: 'Surat Mulai Kerja (SPMK)', icon: PlayCircle, desc: 'Perintah Mulai Kerja' },
                     { id: 'BAST', label: 'BAST (Serah Terima)', icon: Truck, desc: 'Berita Acara Serah Terima' },
                     { id: 'BAP', label: 'BAP (Pembayaran)', icon: CreditCard, desc: 'Berita Acara Pembayaran' },
+                    { id: 'SPP', label: 'Surat Permintaan (SPP)', icon: FileSignature, desc: 'Permintaan Pembayaran' },
+                    { id: 'SPM', label: 'Surat Perintah (SPM)', icon: ShieldCheck, desc: 'Perintah Membayar' },
                     { id: 'LaporanSPJ', label: 'Laporan SPJ (LPJ)', icon: FileCheck, desc: 'Laporan Pertanggungjawaban' },
                   ].map((doc, i) => (
                     <motion.div 
@@ -1882,9 +2342,9 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                 <h3 className="text-sm font-black tracking-widest">Pemerintah Provinsi Kalimantan Tengah</h3>
                 <h2 className="text-2xl font-black leading-tight tracking-tighter">{agencyInfo.name}</h2>
                 <p className="text-[10px] font-bold text-slate-500 mt-1 normal-case italic">{agencyInfo.address}</p>
-                <div className="absolute right-0 top-0 text-right opacity-20 print:opacity-100">
-                  <div className="p-2 border-2 border-slate-900 rounded-lg">
-                    <div className="w-12 h-12 bg-slate-900" />
+                <div className="absolute right-0 top-0 text-right opacity-20 print:opacity-100 flex flex-col items-center">
+                  <div className="p-2 border-2 border-slate-900 rounded-lg flex flex-col items-center">
+                    <QrCode size={40} className="text-slate-900" />
                     <p className="text-[6px] font-black mt-1 uppercase">Verify SPJ-QR</p>
                   </div>
                 </div>
@@ -1958,25 +2418,25 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
 
                   <div className="grid grid-cols-3 gap-8 mt-24 text-center">
                     <div className="flex flex-col justify-between h-48">
-                      <p className="text-[10px] font-black uppercase text-slate-400 leading-tight">Mengetahui/Menyetujui,<br />Kuasa Pengguna Anggaran</p>
+                      <p className="text-[10px] font-black uppercase text-slate-400 leading-tight">Mengetahui/Menyetujui,<br />{selectedSpj.paJabatan || 'Pengguna Anggaran'}</p>
                       <div>
-                        <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-4">H. NURUL ANWAR, SH., M.AP</p>
-                        <p className="text-[10px] font-medium text-slate-500">NIP. 19710520 199203 1 005</p>
+                        <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-4">{selectedSpj.paNama || '...........................'}</p>
+                        <p className="text-[10px] font-medium text-slate-500">NIP. {selectedSpj.paNip || '...........................'}</p>
                       </div>
                     </div>
                     <div className="flex flex-col justify-between h-48">
-                      <p className="text-[10px] font-black uppercase text-slate-400 leading-tight">Telah Dibayar Lunas,<br />Bendahara Pengeluaran</p>
+                      <p className="text-[10px] font-black uppercase text-slate-400 leading-tight">Telah Dibayar Lunas,<br />{selectedSpj.bendaharaJabatan || 'Bendahara Pengeluaran'}</p>
                       <div>
-                        <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-4">SEPTYANAWATI, SE</p>
-                        <p className="text-[10px] font-medium text-slate-500">NIP. 19820925 201001 2 018</p>
+                        <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-4">{selectedSpj.bendaharaNama || '...........................'}</p>
+                        <p className="text-[10px] font-medium text-slate-500">NIP. {selectedSpj.bendaharaNip || '...........................'}</p>
                       </div>
                     </div>
                     <div className="flex flex-col justify-between h-48">
                       <p className="text-[10px] font-black uppercase text-slate-400 leading-tight">Palangka Raya, {formatDate(new Date().toISOString())}<br />Penerima/Penyedia</p>
                       <div>
                         <p className="text-[8px] font-bold text-slate-300 uppercase mb-4 italic">(Meterai 10.000 & Stempel)</p>
-                        <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-4">DIREKTUR {selectedSpj.penyedia}</p>
-                        <p className="text-[10px] font-medium text-slate-500">NIP/NIK. ...........................</p>
+                        <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-4">{selectedSpj.pimpinanPenyedia || 'DIREKTUR'} {selectedSpj.penyedia}</p>
+                        <p className="text-[10px] font-medium text-slate-500">NPWP. {selectedSpj.npwpPenyedia || '...........................'}</p>
                       </div>
                     </div>
                   </div>
@@ -2057,21 +2517,21 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                     <div className="flex flex-col justify-between h-44">
                       <div className="space-y-1">
                         <p className="text-[10px] uppercase">Mengetahui/Menyetujui,</p>
-                        <p className="text-[11px] uppercase text-slate-900">Kuasa Pengguna Anggaran (KPA)</p>
+                        <p className="text-[11px] uppercase text-slate-900">{selectedSpj.paJabatan || 'Pengguna Anggaran'}</p>
                       </div>
                       <div className="border-t-2 border-slate-900 pt-2 mx-8">
-                        <p className="text-xs font-black uppercase">H. NURUL ANWAR, SH., M.AP</p>
-                        <p className="text-[9px] text-slate-500 font-medium tracking-tighter">NIP. 19710520 199203 1 005</p>
+                        <p className="text-xs font-black uppercase">{selectedSpj.paNama || '...........................'}</p>
+                        <p className="text-[9px] text-slate-500 font-medium tracking-tighter">NIP. {selectedSpj.paNip || '...........................'}</p>
                       </div>
                     </div>
                     <div className="flex flex-col justify-between h-44">
                       <div className="space-y-1">
                         <p className="text-[10px] uppercase">Palangka Raya, {formatDate(new Date().toISOString())}</p>
-                        <p className="text-[11px] uppercase">PELAKSANA KEGIATAN / PPTK</p>
+                        <p className="text-[11px] uppercase">{selectedSpj.pptkJabatan || 'Pelaksana Kegiatan / PPTK'}</p>
                       </div>
                       <div className="border-t-2 border-slate-900 pt-2 mx-8">
-                        <p className="text-xs uppercase">{selectedSpj.pic}</p>
-                        <p className="text-[9px] text-slate-500 font-medium tracking-tighter">NIP. {selectedSpj.nipPic || '......................................................'}</p>
+                        <p className="text-xs uppercase">{selectedSpj.pptkNama || selectedSpj.pic}</p>
+                        <p className="text-[9px] text-slate-500 font-medium tracking-tighter">NIP. {selectedSpj.pptkNip || selectedSpj.nipPic || '......................................................'}</p>
                       </div>
                     </div>
                   </div>
@@ -2133,15 +2593,15 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                     <div className="flex flex-col justify-between h-48 group">
                       <p className="text-[10px] font-black uppercase text-slate-400 leading-tight">Menerima Pesanan,<br /><b className="text-slate-600">{selectedSpj.penyedia}</b></p>
                       <div>
-                        <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-4">DIREKTUR PENYEDIA</p>
+                        <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-4">{selectedSpj.pimpinanPenyedia || 'Pimpinan'} {selectedSpj.penyedia}</p>
                         <p className="text-[10px] font-medium text-slate-500 italic">Materai & Stempel Basah</p>
                       </div>
                     </div>
                     <div className="flex flex-col justify-between h-48">
-                      <p className="text-[10px] font-black uppercase text-slate-400 leading-tight">Palangka Raya, {formatDate(new Date().toISOString())}<br />Pejabat Pelaksana Teknis Kegiatan (PPTK)</p>
+                      <p className="text-[10px] font-black uppercase text-slate-400 leading-tight">Palangka Raya, {formatDate(new Date().toISOString())}<br />{selectedSpj.pptkJabatan || 'Pelaksana Teknis Kegiatan (PPTK)'}</p>
                       <div>
-                        <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-4">{selectedSpj.pic}</p>
-                        <p className="text-[10px] font-medium text-slate-500">NIP. {selectedSpj.nipPic || '...........................'}</p>
+                        <p className="text-[11px] font-black uppercase underline decoration-2 underline-offset-4">{selectedSpj.pptkNama || selectedSpj.pic}</p>
+                        <p className="text-[10px] font-medium text-slate-500">NIP. {selectedSpj.pptkNip || selectedSpj.nipPic || '...........................'}</p>
                       </div>
                     </div>
                   </div>
@@ -2159,10 +2619,10 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                       <h4 className="font-black text-sm uppercase underline decoration-2 mb-4">I. IDENTITAS PARA PIHAK</h4>
                       <div className="space-y-4">
                         <div className="pl-4 border-l-4 border-slate-900">
-                          <p className="font-black uppercase text-[10px] text-slate-400 mb-1">PIHAK PERTAMA (Pengguna Jasa/PA)</p>
+                          <p className="font-black uppercase text-[10px] text-slate-400 mb-1">PIHAK PERTAMA (Pengguna Jasa)</p>
                           <div className="grid grid-cols-4 gap-1">
-                            <span className="font-bold">Nama</span><div className="col-span-3">: <b className="text-slate-900 uppercase">{selectedSpj.pic}</b></div>
-                            <span className="font-bold">Jabatan</span><div className="col-span-3">: {selectedSpj.jabatanPic || 'Pengguna Anggaran (PA)'}</div>
+                            <span className="font-bold">Nama</span><div className="col-span-3">: <b className="text-slate-900 uppercase">{selectedSpj.paNama || selectedSpj.pic}</b></div>
+                            <span className="font-bold">Jabatan</span><div className="col-span-3">: {selectedSpj.paJabatan || selectedSpj.jabatanPic || 'Pengguna Anggaran (PA)'}</div>
                             <span className="font-bold">Instansi</span><div className="col-span-3">: <b className="text-slate-900 uppercase">{agencyInfo.name}</b></div>
                             <span className="font-bold">Alamat</span><div className="col-span-3">: {agencyInfo.address}</div>
                           </div>
@@ -2234,15 +2694,15 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                       <p className="text-[10px] uppercase">PIHAK KEDUA (Penyedia),</p>
                       <div className="border-t-2 border-slate-900 pt-2 mx-6 relative">
                          <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-10 border border-slate-900 p-1 text-[8px] italic whitespace-nowrap">MATERAI 10.000</div>
-                         <p className="text-xs uppercase">DIREKTUR {selectedSpj.penyedia}</p>
+                         <p className="text-xs uppercase">{selectedSpj.pimpinanPenyedia || 'DIREKTUR'} {selectedSpj.penyedia}</p>
                          <p className="text-[9px] text-slate-500 font-medium tracking-tighter italic">Penyedia Jasa</p>
                       </div>
                     </div>
                     <div className="flex flex-col justify-between h-48">
-                      <p className="text-[10px] uppercase">PIHAK PERTAMA (PA),</p>
+                      <p className="text-[10px] uppercase">PIHAK PERTAMA (Pajak/PA/PPTK),</p>
                       <div className="border-t-2 border-slate-900 pt-2 mx-6">
-                         <p className="text-xs uppercase">{selectedSpj.pic}</p>
-                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter">NIP. {selectedSpj.nipPic || '...........................'}</p>
+                         <p className="text-xs uppercase">{selectedSpj.paNama || selectedSpj.pptkNama || selectedSpj.pic}</p>
+                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter">NIP. {selectedSpj.paNip || selectedSpj.pptkNip || selectedSpj.nipPic || '...........................'}</p>
                       </div>
                     </div>
                   </div>
@@ -2418,10 +2878,10 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                       {/* Empty for spacing */}
                     </div>
                     <div className="flex flex-col justify-between h-40">
-                      <p className="text-[10px] uppercase">Palangka Raya, {selectedSpj.tanggalSPPBJ ? formatDate(selectedSpj.tanggalSPPBJ) : formatDate(new Date().toISOString())}<br />Ditetapkan Oleh:<br />PENGGUNA ANGGARAN (PA),</p>
+                      <p className="text-[10px] uppercase">Palangka Raya, {selectedSpj.tanggalSPPBJ ? formatDate(selectedSpj.tanggalSPPBJ) : formatDate(new Date().toISOString())}<br />Ditetapkan Oleh:<br />{selectedSpj.paJabatan || 'PENGGUNA ANGGARAN (PA)'},</p>
                       <div className="border-t-2 border-slate-900 pt-2 mx-6 relative">
-                         <p className="text-xs uppercase underline">{selectedSpj.pic || '...........................'}</p>
-                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter uppercase">NIP. {selectedSpj.nipPic || '...........................'}</p>
+                         <p className="text-xs uppercase underline">{selectedSpj.paNama || selectedSpj.pic || '...........................'}</p>
+                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter uppercase">NIP. {selectedSpj.paNip || selectedSpj.nipPic || '...........................'}</p>
                       </div>
                     </div>
                   </div>
@@ -2489,14 +2949,14 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                     <div className="flex flex-col justify-between h-48">
                       <p className="text-[10px] uppercase">Menerima dan Menyetujui,<br />Untuk dan Atas Nama :<br />{selectedSpj.penyedia},</p>
                       <div className="border-t-2 border-slate-900 pt-2 mx-6">
-                         <p className="text-xs uppercase underline">DIREKTUR / PIMPINAN</p>
+                         <p className="text-xs uppercase underline">{selectedSpj.pimpinanPenyedia || 'DIREKTUR / PIMPINAN'}</p>
                       </div>
                     </div>
                     <div className="flex flex-col justify-between h-48">
-                      <p className="text-[10px] uppercase">Dikeluarkan di: Palangka Raya<br />Pada Tanggal: {selectedSpj.tanggalSPMK ? formatDate(selectedSpj.tanggalSPMK) : formatDate(new Date().toISOString())}<br />PENGGUNA ANGGARAN (PA),</p>
+                      <p className="text-[10px] uppercase">Dikeluarkan di: Palangka Raya<br />Pada Tanggal: {selectedSpj.tanggalSPMK ? formatDate(selectedSpj.tanggalSPMK) : formatDate(new Date().toISOString())}<br />{selectedSpj.paJabatan || 'PENGGUNA ANGGARAN (PA)'},</p>
                       <div className="border-t-2 border-slate-900 pt-2 mx-6">
-                         <p className="text-xs uppercase underline">{selectedSpj.pic || '...........................'}</p>
-                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter uppercase">NIP. {selectedSpj.nipPic || '...........................'}</p>
+                         <p className="text-xs uppercase underline">{selectedSpj.paNama || selectedSpj.pic || '...........................'}</p>
+                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter uppercase">NIP. {selectedSpj.paNip || selectedSpj.nipPic || '...........................'}</p>
                       </div>
                     </div>
                   </div>
@@ -2588,15 +3048,15 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                     <div className="flex flex-col justify-between h-48">
                       <p className="text-[10px] uppercase">PIHAK KEDUA (Penerima),</p>
                       <div className="border-t-2 border-slate-900 pt-2 mx-6">
-                         <p className="text-xs uppercase">{selectedSpj.pic}</p>
-                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter">NIP. {selectedSpj.nipPic || '...........................'}</p>
+                         <p className="text-xs uppercase">{selectedSpj.pptkNama || selectedSpj.pic}</p>
+                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter">NIP. {selectedSpj.pptkNip || selectedSpj.nipPic || '...........................'}</p>
                       </div>
                     </div>
                     <div className="flex flex-col justify-between h-48">
                       <p className="text-[10px] uppercase">PIHAK PERTAMA (Penyerah),</p>
                       <div className="border-t-2 border-slate-900 pt-2 mx-6 relative">
-                         <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-10 border border-slate-900 p-1 text-[8px] italic whitespace-nowrap">MATERAI 10.000</div>
-                         <p className="text-xs uppercase">DIREKTUR {selectedSpj.penyedia}</p>
+                         <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-20 border border-slate-900 p-1 text-[8px] italic whitespace-nowrap">MATERAI 10.000</div>
+                         <p className="text-xs uppercase">{selectedSpj.pimpinanPenyedia || 'DIREKTUR'} {selectedSpj.penyedia}</p>
                          <p className="text-[9px] text-slate-500 font-medium tracking-tighter italic">PIMPINAN PERUSAHAAN</p>
                       </div>
                     </div>
@@ -2736,16 +3196,120 @@ export default function DatabaseSPJ({ agencyInfo, setAgencyInfo }: DatabaseSPJPr
                       <p className="text-[10px] uppercase">PIHAK KEDUA (Penyedia),</p>
                       <div className="border-t-2 border-slate-900 pt-2 mx-6 relative">
                          <div className="absolute -top-10 left-1/2 -translate-x-1/2 opacity-20 border border-slate-900 p-1 text-[8px] italic whitespace-nowrap">MATERAI 10.000</div>
-                         <p className="text-xs uppercase italic underline">DIREKTUR / PIMPINAN</p>
+                         <p className="text-xs uppercase italic underline">{selectedSpj.pimpinanPenyedia || 'DIREKTUR / PIMPINAN'}</p>
                          <p className="text-[9px] text-slate-500 font-medium tracking-tighter uppercase">{selectedSpj.penyedia}</p>
                       </div>
                     </div>
                     <div className="flex flex-col justify-between h-48">
-                      <p className="text-[10px] uppercase">Palangka Raya, {formatDate(new Date().toISOString())}<br />PIHAK PERTAMA (PPTK),</p>
+                      <p className="text-[10px] uppercase">Palangka Raya, {formatDate(new Date().toISOString())}<br />MENYETUJUI PEMBAYARAN: <br />{selectedSpj.paJabatan || 'PENGGUNA ANGGARAN (PA)'},</p>
                       <div className="border-t-2 border-slate-900 pt-2 mx-6">
-                         <p className="text-xs uppercase underline underline-offset-2">{selectedSpj.pic}</p>
-                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter uppercase">NIP. {selectedSpj.nipPic || '...........................'}</p>
+                         <p className="text-xs uppercase underline underline-offset-2">{selectedSpj.paNama || '...........................'}</p>
+                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter uppercase">NIP. {selectedSpj.paNip || '...........................'}</p>
                       </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {viewingDoc === 'SPP' && (
+                <div className="space-y-10">
+                  <div className="text-center font-serif">
+                    <h1 className="text-xl font-black uppercase underline underline-offset-4 decoration-2">SURAT PERMINTAAN PEMBAYARAN (SPP)</h1>
+                    <p className="text-sm font-bold mt-2">Nomor: {selectedSpj.nomorBerkas ? selectedSpj.nomorBerkas.replace('/SPB/', '/SPP/') : '.../SPP/.../2026'}</p>
+                  </div>
+
+                  <div className="space-y-6 text-[12px] leading-tight">
+                    <p className="text-justify font-medium">Berdasarkan Surat Perintah Kerja (SPK) Nomor {selectedSpj.nomorKontrak || selectedSpj.nomorBerkas || '-'}, dengan ini kami mengajukan permintaan pembayaran atas pelaksanaan pekerjaan <b className="text-slate-900">"{selectedSpj.namaPaket}"</b> yang telah diselesaikan oleh <b className="text-slate-900">{selectedSpj.penyedia}</b> sesuai dengan Berita Acara Serah Terima Nomor {selectedSpj.nomorBerkas || '-'} tanggal {formatDate(selectedSpj.tanggalSelesai)}.</p>
+                    
+                    <div className="border-2 border-slate-900 p-6 space-y-4">
+                      <div className="grid grid-cols-3 gap-2 border-b border-slate-200 pb-2 font-bold">
+                        <span>1. Jumlah Pagu Anggaran</span><div className="col-span-2">: {formatCurrency(selectedSpj.paguAnggaran)}</div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 border-b border-slate-200 pb-2 font-bold">
+                        <span>2. Realisasi Sebelumnya</span><div className="col-span-2">: Rp 0,00 (Nihil)</div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 border-b border-slate-200 pb-2 font-bold">
+                        <span>3. Permintaan Saat Ini</span><div className="col-span-2 text-primary">: {formatCurrency(selectedSpj.nilaiKontrak)}</div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 font-bold">
+                        <span>4. Sisa Anggaran</span><div className="col-span-2">: {formatCurrency(selectedSpj.paguAnggaran - selectedSpj.nilaiKontrak)}</div>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50 p-4 border border-slate-200 rounded-xl">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Potongan Pajak Dasar SPP:</p>
+                      <div className="grid grid-cols-2 gap-4 text-[11px] font-bold">
+                        <p>PPN (11%): {formatCurrency(selectedSpj.nilaiPPN || 0)}</p>
+                        <p>PPh (Potongan): {formatCurrency(selectedSpj.nilaiPPh || 0)}</p>
+                      </div>
+                    </div>
+
+                    <p className="italic text-slate-500 font-medium">Surat Permintaan Pembayaran ini diajukan untuk proses verifikasi lebih lanjut oleh Bagian Keuangan sebagai dasar penerbitan Surat Perintah Membayar (SPM).</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-20 mt-16 text-center font-black">
+                    <div className="flex flex-col justify-between h-40">
+                      <p className="text-[10px] uppercase">Mengetahui,<br />{selectedSpj.bendaharaJabatan || 'Bendahara Pengeluaran'},</p>
+                      <div className="border-t-2 border-slate-900 pt-2 mx-6 relative">
+                         <p className="text-xs uppercase underline">{selectedSpj.bendaharaNama || '...........................'}</p>
+                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter uppercase">NIP. {selectedSpj.bendaharaNip || '...........................'}</p>
+                      </div>
+                    </div>
+                    <div className="flex flex-col justify-between h-40">
+                      <p className="text-[10px] uppercase">Palangka Raya, {formatDate(new Date().toISOString())}<br />{selectedSpj.pptkJabatan || 'PPTK'},</p>
+                      <div className="border-t-2 border-slate-900 pt-2 mx-6">
+                         <p className="text-xs uppercase underline underline-offset-2">{selectedSpj.pptkNama || selectedSpj.pic}</p>
+                         <p className="text-[9px] text-slate-500 font-medium tracking-tighter uppercase">NIP. {selectedSpj.pptkNip || selectedSpj.nipPic || '...........................'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {viewingDoc === 'SPM' && (
+                <div className="space-y-10">
+                  <div className="text-center font-serif">
+                    <h1 className="text-xl font-black uppercase underline underline-offset-4 decoration-2">SURAT PERINTAH MEMBAYAR (SPM)</h1>
+                    <p className="text-sm font-bold mt-2">Nomor: {selectedSpj.nomorBerkas ? selectedSpj.nomorBerkas.replace('/SPB/', '/SPM/') : '.../SPM/.../2026'}</p>
+                  </div>
+
+                  <div className="space-y-6 text-[12px] leading-tight">
+                    <div className="grid grid-cols-4 gap-2 font-bold mb-4">
+                      <span>KEPADA</span><div className="col-span-3">: BENDAHARA PENGELUARAN {agencyInfo.name.toUpperCase()}</div>
+                      <span>HARAP DIBAYAR</span><div className="col-span-3">: <b className="text-slate-900 font-black">{formatCurrency(selectedSpj.nilaiKontrak - (selectedSpj.statusPPh === 'Termasuk PPh' ? (selectedSpj.nilaiPPh || 0) : 0))}</b></div>
+                      <span>TERBILANG</span><div className="col-span-3 italic">: # {terbilang(selectedSpj.nilaiKontrak - (selectedSpj.statusPPh === 'Termasuk PPh' ? (selectedSpj.nilaiPPh || 0) : 0))} RUPIAH #</div>
+                    </div>
+
+                    <div className="border-2 border-slate-900">
+                       <div className="p-3 bg-slate-900 text-white font-black text-[10px] uppercase tracking-widest">Rincian Pembayaran (Netto)</div>
+                       <div className="p-4 space-y-2 font-bold">
+                          <div className="flex justify-between border-b border-slate-100 pb-1"><span>Nilai Bruto Kontrak</span><span>{formatCurrency(selectedSpj.nilaiKontrak)}</span></div>
+                          <div className="flex justify-between border-b border-slate-100 pb-1"><span>Potongan PPN</span><span className="text-blue-600">({formatCurrency(selectedSpj.nilaiPPN || 0)})</span></div>
+                          <div className="flex justify-between border-b border-slate-200 pb-1"><span>Potongan PPh</span><span className="text-orange-600">({formatCurrency(selectedSpj.nilaiPPh || 0)})</span></div>
+                          <div className="flex justify-between text-primary pt-1"><span>JUMLAH BERSIH (SPM)</span><span>{formatCurrency(selectedSpj.nilaiKontrak - (selectedSpj.nilaiPPN || 0) - (selectedSpj.nilaiPPh || 0))}</span></div>
+                       </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10">
+                       <div className="p-4 border border-slate-300 rounded-xl space-y-2">
+                          <p className="text-[10px] font-black text-slate-400 uppercase">Data Penyedia (Pihak III)</p>
+                          <p className="text-xs font-black uppercase text-slate-900">{selectedSpj.penyedia}</p>
+                          <p className="text-[10px] font-bold">Bank: {selectedSpj.bankPenyedia || '-'}</p>
+                          <p className="text-[10px] font-bold">No. Rek: {selectedSpj.rekeningPenyedia || '-'}</p>
+                       </div>
+                       <div className="p-4 border border-slate-300 rounded-xl space-y-2">
+                          <p className="text-[10px] font-black text-slate-400 uppercase">Mata Anggaran (Kode)</p>
+                          <p className="text-xs font-black text-slate-900">{selectedSpj.nomorBerkas || 'Penyediaan Jasa'}</p>
+                          <p className="text-[10px] font-bold uppercase">{selectedSpj.namaPaket}</p>
+                       </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-20 flex flex-col items-center text-center font-black">
+                    <p className="text-[10px] uppercase mb-16">Ditetapkan di Palangka Raya, {formatDate(new Date().toISOString())}<br />{selectedSpj.paJabatan || 'PENGGUNA ANGGARAN (PA)'},</p>
+                    <div className="border-t-2 border-slate-900 pt-2 px-12 relative min-w-[300px]">
+                        <p className="text-xs uppercase underline underline-offset-4">{selectedSpj.paNama || '...........................'}</p>
+                        <p className="text-[10px] text-slate-500 font-medium tracking-tighter uppercase mt-1">NIP. {selectedSpj.paNip || '...........................'}</p>
                     </div>
                   </div>
                 </div>

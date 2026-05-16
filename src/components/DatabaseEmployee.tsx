@@ -281,7 +281,7 @@ export default function DatabaseEmployee() {
                     <input 
                       type="text" 
                       required
-                      value={formData.nama}
+                      value={formData.nama || ''}
                       onChange={(e) => setFormData({...formData, nama: e.target.value})}
                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
                       placeholder="Masukkan nama lengkap..."
@@ -292,7 +292,7 @@ export default function DatabaseEmployee() {
                     <input 
                       type="text" 
                       required
-                      value={formData.nip}
+                      value={formData.nip || ''}
                       onChange={(e) => setFormData({...formData, nip: e.target.value})}
                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black font-mono"
                       placeholder="19xxxxxxxxxxxxxx"
@@ -302,7 +302,7 @@ export default function DatabaseEmployee() {
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pangkat / Golongan</label>
                     <input 
                       type="text" 
-                      value={formData.pangkatGolongan}
+                      value={formData.pangkatGolongan || ''}
                       onChange={(e) => setFormData({...formData, pangkatGolongan: e.target.value})}
                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
                       placeholder="Contoh: Penata / IIIc"
@@ -313,7 +313,7 @@ export default function DatabaseEmployee() {
                     <input 
                       type="text" 
                       required
-                      value={formData.jabatan}
+                      value={formData.jabatan || ''}
                       onChange={(e) => setFormData({...formData, jabatan: e.target.value})}
                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black italic"
                       placeholder="Contoh: Sekretaris DPRD / PPTK"

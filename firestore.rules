@@ -154,6 +154,12 @@ service cloud.firestore {
       allow delete: if isSuperAdmin();
     }
 
+    // SPJ Checklists
+    match /spj_checklists/{spjId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
+
     // Test connection
     match /test/connection {
       allow get: if true;

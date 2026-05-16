@@ -111,7 +111,15 @@ export default function App() {
   const [agencyInfo, setAgencyInfo] = useState({
     name: 'Sekretariat DPRD Provinsi Kalimantan Tengah',
     address: 'Jl. S. Parman No. 2, Palangka Raya, Kalimantan Tengah',
-    logo: ''
+    logo: '',
+    defaultPaNama: '',
+    defaultPaNip: '',
+    defaultPaJabatan: 'Pengguna Anggaran',
+    defaultPaPangkat: '',
+    defaultBendaharaNama: '',
+    defaultBendaharaNip: '',
+    defaultBendaharaJabatan: 'Bendahara Pengeluaran',
+    defaultBendaharaPangkat: ''
   });
 
   useEffect(() => {

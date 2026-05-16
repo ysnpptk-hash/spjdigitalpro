@@ -16,10 +16,6 @@ export interface Packet {
   no: number;
   namaPaket: string;
   kategori: string;
-  penyedia: string;
-  npwpPenyedia?: string;
-  bankPenyedia?: string;
-  rekeningPenyedia?: string;
   paguAnggaran: number;
   nilaiKontrak: number;
   tanggalMulai: string;
@@ -29,6 +25,29 @@ export interface Packet {
   pic: string;
   nipPic?: string;
   jabatanPic?: string;
+  pangkatPic?: string;
+  // Official Roles
+  paNama?: string;
+  paNip?: string;
+  paJabatan?: string;
+  paPangkat?: string;
+  pptkNama?: string;
+  pptkNip?: string;
+  pptkJabatan?: string;
+  pptkPangkat?: string;
+  bendaharaNama?: string;
+  bendaharaNip?: string;
+  bendaharaJabatan?: string;
+  bendaharaPangkat?: string;
+  // Vendor Details
+  penyedia: string;
+  pimpinanPenyedia?: string;
+  alamatPenyedia?: string;
+  npwpPenyedia?: string;
+  bankPenyedia?: string;
+  rekeningPenyedia?: string;
+  teleponPenyedia?: string;
+  emailPenyedia?: string;
   metodePengadaan?: 'E-purchasing' | 'Tender' | 'Pengadaan Langsung' | 'Penunjukan Langsung' | 'Swakelola';
   regulasiAcuan?: string;
   nomorBerkas?: string;
@@ -60,22 +79,24 @@ export interface Packet {
   progId?: string;
   kegId?: string;
   subId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-export type DocumentType = 'RAB' | 'Kwitansi' | 'SuratPesanan' | 'Kontrak' | 'Ringkasan' | 'BAST' | 'LaporanSPJ' | 'BAP' | 'SPPBJ' | 'SPMK' | null;
+export type DocumentType = 'RAB' | 'Kwitansi' | 'SuratPesanan' | 'Kontrak' | 'Ringkasan' | 'BAST' | 'LaporanSPJ' | 'BAP' | 'SPPBJ' | 'SPMK' | 'SPP' | 'SPM' | null;
+
+export interface ChecklistItem {
+  id: string;
+  label: string;
+  checked: boolean;
+  required: boolean;
+  assignedTo?: string; // Employee ID
+}
 
 export interface SPJChecklist {
-  suratPengantar: boolean;
-  spp: boolean;
-  sptjb: boolean;
-  spk: boolean;
-  ringkasanKontrak: boolean;
-  laporanNaratif: boolean;
-  rincianRealisasi: boolean;
-  kuitansiNota: boolean;
-  fakturPajak: boolean;
-  dokumentasi: boolean;
-  bast: boolean;
+  spjId: string;
+  items: ChecklistItem[];
+  updatedAt: string;
 }
 
 export interface Belanja {

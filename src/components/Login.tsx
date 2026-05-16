@@ -156,6 +156,7 @@ export default function Login({ onLogin, agencyInfo, error: loginError }: LoginP
                   </div>
 
                   <button 
+                    id="btn-login-submit"
                     type="submit"
                     disabled={loading}
                     className={cn(

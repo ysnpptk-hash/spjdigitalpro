@@ -147,9 +147,9 @@ export default function DatabaseVendor() {
   const filteredVendors = vendors.filter(ven => 
     ven.namaPenyedia.toLowerCase().includes(searchTerm.toLowerCase()) ||
     ven.namaPimpinan.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    ven.npwp.includes(searchTerm) ||
-    ven.telepon.includes(searchTerm) ||
-    ven.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (ven.npwp || '').includes(searchTerm) ||
+    (ven.telepon || '').includes(searchTerm) ||
+    (ven.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     ven.kategori.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -333,7 +333,7 @@ export default function DatabaseVendor() {
                     <input 
                       type="text" 
                       required
-                      value={formData.namaPenyedia}
+                      value={formData.namaPenyedia || ''}
                       onChange={(e) => setFormData({...formData, namaPenyedia: e.target.value})}
                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black uppercase"
                       placeholder="Contoh: PT. MAJU JAYA BERSAMA"
@@ -344,7 +344,7 @@ export default function DatabaseVendor() {
                     <input 
                       type="text" 
                       required
-                      value={formData.namaPimpinan}
+                      value={formData.namaPimpinan || ''}
                       onChange={(e) => setFormData({...formData, namaPimpinan: e.target.value})}
                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
                       placeholder="Nama lengkap pimpinan..."
@@ -353,7 +353,7 @@ export default function DatabaseVendor() {
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Kategori Penyedia</label>
                     <select 
-                      value={formData.kategori}
+                      value={formData.kategori || 'Barang'}
                       onChange={(e) => setFormData({...formData, kategori: e.target.value})}
                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
                     >
@@ -366,7 +366,7 @@ export default function DatabaseVendor() {
                   <div className="md:col-span-2">
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Alamat Kantor</label>
                     <textarea 
-                      value={formData.alamat}
+                      value={formData.alamat || ''}
                       onChange={(e) => setFormData({...formData, alamat: e.target.value})}
                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-medium h-24"
                       placeholder="Alamat lengkap perusahaan..."
@@ -376,7 +376,7 @@ export default function DatabaseVendor() {
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">NPWP Perusahaan</label>
                     <input 
                       type="text" 
-                      value={formData.npwp}
+                      value={formData.npwp || ''}
                       onChange={(e) => setFormData({...formData, npwp: formatNPWP(e.target.value)})}
                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black font-mono"
                       placeholder="00.000.000.0-000.000"
@@ -386,10 +386,20 @@ export default function DatabaseVendor() {
                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Email Perusahaan</label>
                     <input 
                       type="email" 
-                      value={formData.email}
+                      value={formData.email || ''}
                       onChange={(e) => setFormData({...formData, email: e.target.value})}
                       className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
                       placeholder="email@perusahaan.com"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Telepon / WhatsApp</label>
+                    <input 
+                      type="text" 
+                      value={formData.telepon || ''}
+                      onChange={(e) => setFormData({...formData, telepon: e.target.value})}
+                      className="w-full px-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black"
+                      placeholder="Contoh: 0812xxxxxxxx"
                     />
                   </div>
                   <div>
@@ -398,7 +408,7 @@ export default function DatabaseVendor() {
                       <Landmark className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                       <input 
                         type="text" 
-                        value={formData.bank}
+                        value={formData.bank || ''}
                         onChange={(e) => setFormData({...formData, bank: e.target.value.toUpperCase()})}
                         className="w-full pl-12 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black uppercase"
                         placeholder="Contoh: BANK KALTENG"
@@ -411,7 +421,7 @@ export default function DatabaseVendor() {
                       <CreditCard className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                       <input 
                         type="text" 
-                        value={formData.nomorRekening}
+                        value={formData.nomorRekening || ''}
                         onChange={(e) => setFormData({...formData, nomorRekening: e.target.value})}
                         className="w-full pl-12 pr-5 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-primary/5 transition-all text-sm font-black font-mono"
                         placeholder="0001xxxxxxxx"

@@ -64,7 +64,7 @@ export default function DatabaseUser({ currentUser }: DatabaseUserProps) {
         const num = i.toString().padStart(2, '0');
         seedUsers.push({
           email: `pptk${num}@setwan.go.id`, // Using a more formal domain
-          username: `PPTK ${num}`,
+          username: `pptk${num}`,
           nama: `Admin PPTK ${num}`,
           role: "Admin" as any,
           status: "Aktif",
