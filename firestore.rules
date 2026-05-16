@@ -81,6 +81,18 @@ service cloud.firestore {
              data.jabatan is string && data.jabatan.size() <= 200;
     }
 
+    function isValidVendor(data) {
+      return data.keys().hasAll(['namaPenyedia']) &&
+             data.namaPenyedia is string && data.namaPenyedia.size() <= 200 &&
+             (!('namaPimpinan' in data) || (data.namaPimpinan is string && data.namaPimpinan.size() <= 200)) &&
+             (!('alamat' in data) || (data.alamat is string && data.alamat.size() <= 500)) &&
+             (!('npwp' in data) || (data.npwp is string && data.npwp.size() <= 50)) &&
+             (!('bank' in data) || (data.bank is string && data.bank.size() <= 100)) &&
+             (!('nomorRekening' in data) || (data.nomorRekening is string && data.nomorRekening.size() <= 100)) &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 100)) &&
+             (!('telepon' in data) || (data.telepon is string && data.telepon.size() <= 50));
+    }
+
     // --- COLLECTION MATCHES ---
 
     // Public settings (agency info)
@@ -131,6 +143,14 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow create: if isAdmin() && isValidEmployee(incoming()) && isValidId(employeeId);
       allow update: if isAdmin() && isValidEmployee(incoming());
+      allow delete: if isSuperAdmin();
+    }
+
+    // Vendors
+    match /vendors/{vendorId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() && isValidVendor(incoming()) && isValidId(vendorId);
+      allow update: if isAdmin() && isValidVendor(incoming());
       allow delete: if isSuperAdmin();
     }
 
